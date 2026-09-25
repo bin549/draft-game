@@ -4,6 +4,7 @@ import {
   drawHouse,
   drawSprout,
   drawTornado,
+  drawFireball,
 } from "./draw.js";
 import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js";
 import { showCharSelect } from "./charselect.js";
@@ -18,6 +19,8 @@ import {
 
 const WORLD = { w: 3200, h: 3200 };
 const STAGE_DURATION = 48; // 秒 / 关
+const CRIT_CHANCE = 0.18;
+const CRIT_MULT = 2;
 
 const UPGRADES = [
   {
@@ -26,6 +29,15 @@ const UPGRADES = [
     desc: "箭矢伤害 +8",
     apply: (s) => {
       s.player.damage += 8;
+    },
+  },
+  {
+    id: "crit",
+    title: "暴击专精",
+    desc: "暴击率 +12%，暴击伤害更高",
+    apply: (s) => {
+      s.player.critChance = Math.min(0.55, (s.player.critChance || CRIT_CHANCE) + 0.12);
+      s.player.critMult = (s.player.critMult || CRIT_MULT) + 0.35;
     },
   },
   {
@@ -144,6 +156,7 @@ let canvas, ctx;
 let els = {};
 let state = null;
 let keys = Object.create(null);
+let mouse = { x: 0, y: 0, down: false };
 let lastTs = 0;
 let running = false;
 let paused = false;
@@ -151,6 +164,9 @@ let raf = 0;
 let onKeyDown = null;
 let onKeyUp = null;
 let onResize = null;
+let onMouseMove = null;
+let onMouseDown = null;
+let onMouseUp = null;
 
 function xpToLevel(level) {
   return Math.floor(12 + level * 10 + level * level * 2.2);
@@ -206,13 +222,17 @@ function createState() {
       xp: 0,
       xpNext: xpToLevel(1),
       damage: s.damage,
+      critChance: CRIT_CHANCE,
+      critMult: CRIT_MULT,
       fireCooldown: s.fireCooldown,
       fireTimer: 0,
       projectileCount: 1,
       projectileSpeed: s.projectileSpeed,
       pierce: s.pierce,
       magnet: 70,
-      tornadoLevel: 1 + (s.tornadoBonus || 0),
+      // 龙卷风仅魔法师可用
+      canTornado: ch.id === "mage",
+      tornadoLevel: ch.id === "mage" ? 1 + (s.tornadoBonus || 0) : 0,
       tornadoCooldown: s.tornadoBonus ? 6 : 8,
       tornadoCdLeft: 0,
       tornadoDamage: 28 + (s.tornadoBonus ? 12 : 0),
@@ -221,10 +241,14 @@ function createState() {
     },
     enemies: [],
     projectiles: [],
+    enemyProjectiles: [],
     meleeFx: [],
     orbs: [],
     particles: [],
+    floatTexts: [],
     screenFlash: 0,
+    shake: 0,
+    shakeMag: 0,
   };
 }
 
@@ -283,20 +307,24 @@ function paintMagicCard() {
 function updateMagicUi() {
   if (!state || !els.magicBtn) return;
   const p = state.player;
-  const ready = p.tornadoCdLeft <= 0;
+  const canUse = !!p.canTornado && p.tornadoLevel > 0;
+  const ready = canUse && p.tornadoCdLeft <= 0;
   els.magicBtn.disabled = !ready;
-  els.magicBtn.classList.toggle("cooling", !ready);
+  els.magicBtn.classList.toggle("cooling", canUse && !ready);
+  els.magicBtn.classList.toggle("locked", !canUse);
   if (els.magicCd) {
-    els.magicCd.textContent = ready
-      ? "就绪 · Q"
-      : `${p.tornadoCdLeft.toFixed(1)}s · Q`;
+    els.magicCd.textContent = !canUse
+      ? "仅魔法师"
+      : ready
+        ? "就绪 · Q"
+        : `${p.tornadoCdLeft.toFixed(1)}s · Q`;
   }
 }
 
-/** 手动全屏龙卷风：瞬间打全体敌人，并生成覆盖屏幕的风暴视觉 */
+/** 手动全屏龙卷风：仅魔法师 */
 function castTornadoMagic() {
   const p = state.player;
-  if (!running || paused || p.tornadoLevel <= 0) return false;
+  if (!running || paused || !p.canTornado || p.tornadoLevel <= 0) return false;
   if (p.tornadoCdLeft > 0) return false;
 
   p.tornadoCdLeft = p.tornadoCooldown;
@@ -351,48 +379,88 @@ function spawnTornado() {
   castTornadoMagic();
 }
 
+function rollCritDamage(base) {
+  const p = state.player;
+  const chance = p.critChance ?? CRIT_CHANCE;
+  const mult = p.critMult ?? CRIT_MULT;
+  const crit = Math.random() < chance;
+  return {
+    damage: crit ? Math.round(base * mult) : base,
+    crit,
+  };
+}
+
+function triggerShake(mag = 5, dur = 0.16) {
+  state.shake = Math.max(state.shake || 0, dur);
+  state.shakeMag = Math.max(state.shakeMag || 0, mag);
+}
+
+function pushCritText(e) {
+  if (!state.floatTexts) state.floatTexts = [];
+  const top = e.y - (e.drawH || e.radius * 2 || 40) * 0.55 - 10;
+  state.floatTexts.push({
+    x: e.x,
+    y: top,
+    text: "暴击",
+    life: 0.75,
+    maxLife: 0.75,
+  });
+}
+
 function fireProjectiles() {
   const p = state.player;
-  if (state.enemies.length === 0) return;
+  if (p.fireTimer > 0) return;
+  p.fireTimer = p.fireCooldown;
 
-  // —— 近战：只打贴身敌人，不发射远程弹 ——
+  const cam = state.camera;
+  const aimX = mouse.x + cam.x;
+  const aimY = mouse.y + cam.y;
+  const baseAngle = Math.atan2(aimY - p.y, aimX - p.x);
+  p.facing = Math.cos(baseAngle) >= 0 ? 1 : -1;
+
+  // —— 近战：朝瞄准方向挥砍（不要求贴身才可出招）——
   if (p.attackType === "melee") {
-    const range = p.meleeRange || 70;
+    const range = Math.max(p.meleeRange || 70, 220);
     const hits = [];
     for (const e of state.enemies) {
-      const d = Math.hypot(e.x - p.x, e.y - p.y);
-      if (d <= range + e.radius) hits.push({ e, d });
+      const dx = e.x - p.x;
+      const dy = e.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > range + e.radius) continue;
+      const dot = dx * Math.cos(baseAngle) + dy * Math.sin(baseAngle);
+      if (dot < -8) continue;
+      hits.push({ e, d });
     }
-    if (hits.length === 0) return;
-    hits.sort((a, b) => a.d - b.d);
-    const primary = hits[0].e;
-    p.facing = primary.x >= p.x ? 1 : -1;
-    const angle = Math.atan2(primary.y - p.y, primary.x - p.x);
-
-    // 斩击特效（贴身，不飞行）
     state.meleeFx.push({
-      x: p.x + Math.cos(angle) * 28,
-      y: p.y + Math.sin(angle) * 20 - 4,
-      angle,
+      x: p.x + Math.cos(baseAngle) * 28,
+      y: p.y + Math.sin(baseAngle) * 20 - 4,
+      angle: baseAngle,
       weapon: p.weapon,
       life: 0.22,
       maxLife: 0.22,
     });
+    // 无敌人也可挥砍，仅无伤害
+    if (hits.length === 0) return;
+    hits.sort((a, b) => a.d - b.d);
 
-    // 范围内最多打 3 个
     const maxHits = p.charId === "knight" ? 2 : 3;
     const doomed = [];
+    let anyCrit = false;
     for (let i = 0; i < Math.min(maxHits, hits.length); i++) {
       const e = hits[i].e;
       if (!state.enemies.includes(e)) continue;
-      e.hp -= p.damage;
-      e.hurt = 0.18;
-      const push = p.charId === "knight" ? 28 : 14;
-      e.x += Math.cos(angle) * push;
-      e.y += Math.sin(angle) * push;
-      addParticle(e.x, e.y, "#8b3d14");
+      const hit = rollCritDamage(p.damage);
+      if (hit.crit) anyCrit = true;
+      e.hp -= hit.damage;
+      e.hurt = hit.crit ? 0.28 : 0.18;
+      const push = (p.charId === "knight" ? 28 : 14) * (hit.crit ? 1.35 : 1);
+      e.x += Math.cos(baseAngle) * push;
+      e.y += Math.sin(baseAngle) * push;
+      addParticle(e.x, e.y, hit.crit ? "#c23b3b" : "#8b3d14");
+      if (hit.crit) pushCritText(e);
       if (e.hp <= 0) doomed.push(e);
     }
+    if (anyCrit) triggerShake(6, 0.18);
     for (const e of doomed) {
       const idx = state.enemies.indexOf(e);
       if (idx >= 0) killEnemy(e, idx);
@@ -400,23 +468,7 @@ function fireProjectiles() {
     return;
   }
 
-  // —— 远程：箭矢 / 法球 ——
-  let nearest = null;
-  let best = Infinity;
-  for (const e of state.enemies) {
-    const dx = e.x - p.x;
-    const dy = e.y - p.y;
-    const d2 = dx * dx + dy * dy;
-    if (d2 < best) {
-      best = d2;
-      nearest = e;
-    }
-  }
-  if (!nearest) return;
-
-  const baseAngle = Math.atan2(nearest.y - p.y, nearest.x - p.x);
-  p.facing = Math.cos(baseAngle) >= 0 ? 1 : -1;
-
+  // —— 远程：朝鼠标方向发射（命中时再 roll 暴击）——
   const count = p.projectileCount;
   const spread = count > 1 ? 0.18 : 0;
   for (let i = 0; i < count; i++) {
@@ -457,11 +509,15 @@ function addParticle(x, y, color) {
 }
 
 function pickUpgrades() {
-  const pool = [...UPGRADES];
+  const pool = UPGRADES.filter((u) => {
+    if (u.id === "tornado" && !state.player.canTornado) return false;
+    return true;
+  });
   const picks = [];
-  while (picks.length < 3 && pool.length) {
-    const i = Math.floor(Math.random() * pool.length);
-    picks.push(pool.splice(i, 1)[0]);
+  const bag = [...pool];
+  while (picks.length < 3 && bag.length) {
+    const i = Math.floor(Math.random() * bag.length);
+    picks.push(bag.splice(i, 1)[0]);
   }
   return picks;
 }
@@ -569,10 +625,10 @@ function update(dt) {
     state.spawnTimer += state.spawnInterval;
   }
 
-  p.fireTimer -= dt;
-  if (p.fireTimer <= 0) {
+  p.fireTimer = Math.max(0, p.fireTimer - dt);
+  // 手动攻击：按住鼠标或空格，受冷却限制
+  if (mouse.down || keys["Space"]) {
     fireProjectiles();
-    p.fireTimer = p.fireCooldown;
   }
 
   // 龙卷风魔法冷却
@@ -581,6 +637,22 @@ function update(dt) {
     updateMagicUi();
   }
   if (state.screenFlash > 0) state.screenFlash -= dt;
+  if (state.shake > 0) {
+    state.shake -= dt;
+    if (state.shake <= 0) {
+      state.shake = 0;
+      state.shakeMag = 0;
+    }
+  }
+
+  if (state.floatTexts) {
+    for (let i = state.floatTexts.length - 1; i >= 0; i--) {
+      const ft = state.floatTexts[i];
+      ft.life -= dt;
+      ft.y -= 36 * dt;
+      if (ft.life <= 0) state.floatTexts.splice(i, 1);
+    }
+  }
 
   for (let i = state.tornados.length - 1; i >= 0; i--) {
     const tw = state.tornados[i];
@@ -647,9 +719,14 @@ function update(dt) {
       const dy = e.y - pr.y;
       if (dx * dx + dy * dy < (e.radius + 6) ** 2) {
         pr.hit.add(e);
-        e.hp -= pr.damage;
-        e.hurt = 0.18;
-        addParticle(pr.x, pr.y, "#c45c26");
+        const hit = rollCritDamage(pr.damage);
+        e.hp -= hit.damage;
+        e.hurt = hit.crit ? 0.28 : 0.18;
+        addParticle(pr.x, pr.y, hit.crit ? "#c23b3b" : "#c45c26");
+        if (hit.crit) {
+          triggerShake(5.5, 0.16);
+          pushCritText(e);
+        }
         if (e.hp <= 0) killEnemy(e, j);
         if (pr.pierceLeft <= 0) {
           state.projectiles.splice(i, 1);
@@ -669,19 +746,93 @@ function update(dt) {
     const dy = p.y - e.y;
     const dist = Math.hypot(dx, dy) || 1;
     e.facing = dx >= 0 ? 1 : -1;
-    e.x += (dx / dist) * e.speed * dt;
-    e.y += (dy / dist) * e.speed * dt;
 
-    if (dist < e.radius + p.radius && p.invuln <= 0) {
-      p.hp -= e.damage;
-      p.invuln = 0.55;
-      addParticle(p.x, p.y, "#c23b3b");
-      if (p.hp <= 0) {
-        p.hp = 0;
-        updateHud();
-        endGame();
-        return;
+    if (e.attack === "fireball") {
+      const prefer = e.preferRange || 220;
+      // 保持射程：太远追、太近后退、合适距离开火
+      if (dist > prefer + 40) {
+        e.x += (dx / dist) * e.speed * dt;
+        e.y += (dy / dist) * e.speed * dt;
+      } else if (dist < prefer - 50) {
+        e.x -= (dx / dist) * e.speed * 0.85 * dt;
+        e.y -= (dy / dist) * e.speed * 0.85 * dt;
+      } else {
+        // 侧向游走
+        e.x += (-dy / dist) * e.speed * 0.35 * dt;
+        e.y += (dx / dist) * e.speed * 0.35 * dt;
       }
+
+      if (e.fireTimer > 0) e.fireTimer -= dt;
+      if (e.fireTimer <= 0 && dist < prefer + 80) {
+        e.fireTimer = e.fireCooldown || 1.3;
+        const ang = Math.atan2(dy, dx);
+        const spd = e.fireballSpeed || 210;
+        state.enemyProjectiles.push({
+          x: e.x + Math.cos(ang) * 18,
+          y: e.y + Math.sin(ang) * 18,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          angle: ang,
+          life: 2.4,
+          damage: Math.max(6, Math.round(e.damage * 0.85)),
+          radius: 10,
+        });
+      }
+      // 贴身仍会造成碰撞伤害
+      if (dist < e.radius + p.radius && p.invuln <= 0) {
+        p.hp -= Math.ceil(e.damage * 0.55);
+        p.invuln = 0.55;
+        addParticle(p.x, p.y, "#c23b3b");
+        if (p.hp <= 0) {
+          p.hp = 0;
+          updateHud();
+          endGame();
+          return;
+        }
+      }
+    } else {
+      e.x += (dx / dist) * e.speed * dt;
+      e.y += (dy / dist) * e.speed * dt;
+
+      if (dist < e.radius + p.radius && p.invuln <= 0) {
+        p.hp -= e.damage;
+        p.invuln = 0.55;
+        addParticle(p.x, p.y, "#c23b3b");
+        if (p.hp <= 0) {
+          p.hp = 0;
+          updateHud();
+          endGame();
+          return;
+        }
+      }
+    }
+  }
+
+  // 敌人火球
+  if (!state.enemyProjectiles) state.enemyProjectiles = [];
+  for (let i = state.enemyProjectiles.length - 1; i >= 0; i--) {
+    const pr = state.enemyProjectiles[i];
+    pr.x += pr.vx * dt;
+    pr.y += pr.vy * dt;
+    pr.life -= dt;
+    if (pr.life <= 0) {
+      state.enemyProjectiles.splice(i, 1);
+      continue;
+    }
+    const d = Math.hypot(pr.x - p.x, pr.y - p.y);
+    if (d < (pr.radius || 10) + p.radius) {
+      if (p.invuln <= 0) {
+        p.hp -= pr.damage;
+        p.invuln = 0.4;
+        addParticle(p.x, p.y, "#e07030");
+        if (p.hp <= 0) {
+          p.hp = 0;
+          updateHud();
+          endGame();
+          return;
+        }
+      }
+      state.enemyProjectiles.splice(i, 1);
     }
   }
 
@@ -730,13 +881,20 @@ function render() {
   const viewW = window.innerWidth;
   const viewH = window.innerHeight;
   const cam = state.camera;
+  const shakeX =
+    state.shake > 0 ? (Math.random() - 0.5) * 2 * (state.shakeMag || 5) : 0;
+  const shakeY =
+    state.shake > 0 ? (Math.random() - 0.5) * 2 * (state.shakeMag || 5) : 0;
 
   ctx.clearRect(0, 0, viewW, viewH);
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
   const g = ctx.createLinearGradient(0, 0, viewW, viewH);
   g.addColorStop(0, "#f2efe6");
   g.addColorStop(1, "#e8e0d2");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.fillRect(-8, -8, viewW + 16, viewH + 16);
   drawGround(ctx, cam.x, cam.y, viewW, viewH);
 
   const sx = (wx) => wx - cam.x;
@@ -801,6 +959,10 @@ function render() {
     drawWeaponProjectile(ctx, pr.weapon || "arrow", sx(pr.x), sy(pr.y), pr.angle, pr.life);
   }
 
+  for (const pr of state.enemyProjectiles || []) {
+    drawFireball(ctx, sx(pr.x), sy(pr.y), pr.angle, Math.min(1, pr.life), 0.95);
+  }
+
   for (const fx of state.meleeFx) {
     ctx.globalAlpha = Math.max(0, fx.life / fx.maxLife);
     drawWeaponProjectile(ctx, fx.weapon === "bolt" ? "slash" : fx.weapon, sx(fx.x), sy(fx.y), fx.angle, fx.life);
@@ -830,6 +992,22 @@ function render() {
       ctx.stroke();
     }
   }
+
+  // 暴击飘字
+  for (const ft of state.floatTexts || []) {
+    const t = Math.max(0, ft.life / ft.maxLife);
+    ctx.globalAlpha = Math.min(1, t * 1.5);
+    ctx.fillStyle = "#c23b3b";
+    ctx.strokeStyle = "rgba(255,248,235,0.95)";
+    ctx.lineWidth = 3;
+    ctx.font = "bold 20px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeText(ft.text, sx(ft.x), sy(ft.y));
+    ctx.fillText(ft.text, sx(ft.x), sy(ft.y));
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
 }
 
 function loop(ts) {
@@ -906,8 +1084,29 @@ export function startSurvivor(options) {
   onKeyUp = (e) => {
     keys[e.code] = false;
   };
+  onMouseMove = (e) => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+  };
+  onMouseDown = (e) => {
+    if (e.button !== 0) return;
+    // 点在 UI（升级/魔法卡）上不攻击
+    if (e.target?.closest?.(".overlay, .magic-dock, .hud")) return;
+    mouse.down = true;
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+    if (running && !paused) fireProjectiles();
+  };
+  onMouseUp = () => {
+    mouse.down = false;
+  };
+
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("mousedown", onMouseDown);
+  window.addEventListener("mouseup", onMouseUp);
+  window.addEventListener("blur", onMouseUp);
 
   if (els.magicBtn) {
     els.magicBtn.onclick = () => castTornadoMagic();
@@ -921,15 +1120,22 @@ export function startSurvivor(options) {
 export function stopSurvivor() {
   running = false;
   paused = false;
+  mouse.down = false;
   cancelAnimationFrame(raf);
   if (onResize) window.removeEventListener("resize", onResize);
   if (onKeyDown) window.removeEventListener("keydown", onKeyDown);
   if (onKeyUp) window.removeEventListener("keyup", onKeyUp);
+  if (onMouseMove) window.removeEventListener("mousemove", onMouseMove);
+  if (onMouseDown) window.removeEventListener("mousedown", onMouseDown);
+  if (onMouseUp) {
+    window.removeEventListener("mouseup", onMouseUp);
+    window.removeEventListener("blur", onMouseUp);
+  }
   els.hud?.classList.add("hidden");
   els.overlay?.classList.add("hidden");
   els.gameover?.classList.add("hidden");
   els.levelup?.classList.add("hidden");
   els.charSelect?.classList.add("hidden");
   els.magicDock?.classList.add("hidden");
-  onResize = onKeyDown = onKeyUp = null;
+  onResize = onKeyDown = onKeyUp = onMouseMove = onMouseDown = onMouseUp = null;
 }

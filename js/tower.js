@@ -30,6 +30,9 @@ const TOWER_TYPES = Object.fromEntries(
 );
 
 const TOWER_ORDER = ["swordsman", "mage", "knight", "archer"];
+/** 开局到第 1 波 / 波间自动倒计时（秒） */
+const FIRST_WAVE_DELAY = 4;
+const WAVE_GAP = 6;
 
 /** 波次：逐步解锁全部编号怪物，难度递增；轮转保证每种都会出现 */
 const WAVES = [
@@ -262,6 +265,7 @@ function createState() {
     projectiles: [],
     particles: [],
     attackFx: [],
+    floatTexts: [],
     decor: [],
     gold: 180,
     lives: 20,
@@ -274,6 +278,7 @@ function createState() {
     kills: 0,
     time: 0,
     pendingNext: true,
+    nextWaveTimer: FIRST_WAVE_DELAY,
     won: false,
     hoverSlot: null,
   };
@@ -320,31 +325,55 @@ function updateHud() {
     if (costEl) costEl.textContent = `${def.cost}金`;
   }
 
-  const canWave =
+  const waiting =
     running &&
     state.pendingNext &&
     !state.waveSpawning &&
     state.enemies.length === 0 &&
     state.wave < WAVES.length;
-  els.btnWave.disabled = !canWave;
-  els.btnWave.textContent =
-    state.wave >= WAVES.length ? "已结束" : `开始第 ${state.wave + 1} 波`;
+  // 自动波次：按钮只显示倒计时，不可手动点
+  els.btnWave.disabled = true;
+  if (state.wave >= WAVES.length && !state.waveSpawning && state.enemies.length === 0) {
+    els.btnWave.textContent = "已结束";
+  } else if (waiting) {
+    const sec = Math.max(0, Math.ceil(state.nextWaveTimer));
+    els.btnWave.textContent = `第 ${state.wave + 1} 波 · ${sec}s`;
+  } else if (state.waveSpawning || state.enemies.length > 0) {
+    els.btnWave.textContent = `进行中 · 第 ${state.wave} 波`;
+  } else {
+    els.btnWave.textContent = `第 ${Math.min(state.wave + 1, WAVES.length)} 波`;
+  }
 }
 
 function addParticle(x, y, color, count = 5, speed = 70) {
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
-    const sp = speed * 0.5 + Math.random() * speed;
+    const sp = speed * (0.4 + Math.random() * 0.8);
     state.particles.push({
       x,
       y,
       vx: Math.cos(a) * sp,
       vy: Math.sin(a) * sp,
-      life: 0.4 + Math.random() * 0.3,
+      life: 0.35 + Math.random() * 0.3,
       color,
-      size: 2.8 + Math.random() * 3.2,
     });
   }
+}
+
+function rewardKill(e) {
+  const gold = e.gold || 0;
+  state.gold += gold;
+  state.kills += 1;
+  addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
+  const top = e.y - (e.drawH ? e.drawH * 0.55 : 28) - 8;
+  state.floatTexts.push({
+    x: e.x,
+    y: top,
+    text: `+${gold}`,
+    life: 1.05,
+    maxLife: 1.05,
+  });
+  updateHud();
 }
 
 function pushFx(fx) {
@@ -353,7 +382,7 @@ function pushFx(fx) {
 
 function makeEnemy(type) {
   const waveStage = WAVES[Math.max(0, state.wave - 1)]?.stage || state.wave || 1;
-  const stats = makeMonsterStats(type, waveStage);
+  const stats = makeMonsterStats(type, waveStage, { drawScale: 0.55 });
   return {
     ...stats,
     dist: 0,
@@ -375,6 +404,7 @@ function startWave() {
   state.spawnTypes = def.types;
   state.spawnIndex = 0;
   state.pendingNext = false;
+  state.nextWaveTimer = 0;
   updateHud();
 }
 
@@ -440,6 +470,26 @@ function endGame(won) {
 
 function update(dt) {
   state.time += dt;
+
+  // 自动倒计时进入下一波（直到最后一波）
+  if (
+    state.pendingNext &&
+    !state.waveSpawning &&
+    state.enemies.length === 0 &&
+    state.wave < WAVES.length
+  ) {
+    state.nextWaveTimer -= dt;
+    if (state.nextWaveTimer <= 0) {
+      startWave();
+    } else {
+      // 刷新倒计时文案（约每帧，成本很低）
+      const sec = Math.ceil(state.nextWaveTimer);
+      if (els.btnWave && els.btnWave.dataset.sec !== String(sec)) {
+        els.btnWave.dataset.sec = String(sec);
+        els.btnWave.textContent = `第 ${state.wave + 1} 波 · ${sec}s`;
+      }
+    }
+  }
 
   // 刷怪
   if (state.waveSpawning) {
@@ -522,9 +572,7 @@ function update(dt) {
             if (d <= t.range) {
               e.hp -= t.damage;
               e.hurt = 0.22;
-              const ang = Math.atan2(e.y - t.y, e.x - t.x) + 1.1;
-              e.x += Math.cos(ang) * 6;
-              e.y += Math.sin(ang) * 6;
+              // 不改路径坐标，避免被击退推离中线
               pushFx({
                 kind: "burst",
                 x: e.x,
@@ -535,11 +583,8 @@ function update(dt) {
               });
               addParticle(e.x, e.y, "#4a6a9a", 6, 90);
               if (e.hp <= 0) {
-                state.gold += e.gold;
-                state.kills += 1;
-                addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
+                rewardKill(e);
                 state.enemies.splice(j, 1);
-                updateHud();
               }
             }
           }
@@ -583,11 +628,8 @@ function update(dt) {
               });
               addParticle(e.x, e.y, t.type === "knight" ? "#5a5a5a" : "#8b3d14", 7, 110);
               if (e.hp <= 0) {
-                state.gold += e.gold;
-                state.kills += 1;
-                addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
+                rewardKill(e);
                 state.enemies.splice(j, 1);
-                updateHud();
               }
             }
           }
@@ -652,11 +694,8 @@ function update(dt) {
         addParticle(pr.x, pr.y, "#c45c26", 8, 120);
         hit = true;
         if (e.hp <= 0) {
-          state.gold += e.gold;
-          state.kills += 1;
-          addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
+          rewardKill(e);
           state.enemies.splice(j, 1);
-          updateHud();
         }
         break;
       }
@@ -683,6 +722,13 @@ function update(dt) {
     if (pt.life <= 0) state.particles.splice(i, 1);
   }
 
+  for (let i = state.floatTexts.length - 1; i >= 0; i--) {
+    const ft = state.floatTexts[i];
+    ft.life -= dt;
+    ft.y -= 28 * dt;
+    if (ft.life <= 0) state.floatTexts.splice(i, 1);
+  }
+
   // 波次清空后允许下一波 / 胜利
   if (
     !state.waveSpawning &&
@@ -695,6 +741,7 @@ function update(dt) {
       return;
     }
     state.pendingNext = true;
+    state.nextWaveTimer = WAVE_GAP;
     state.gold += 25 + state.wave * 8;
     updateHud();
   }
@@ -891,7 +938,7 @@ function drawAttackFx(fx) {
     ctx.arc(fx.x, fx.y, fx.radius * (0.35 + (1 - fade) * 0.65), 0, Math.PI * 2);
     ctx.fill();
   } else if (fx.kind === "burst") {
-    drawTornado(ctx, fx.x, fx.y, 0.45 + (1 - fade) * 0.35, (1 - fade) * 8, fade);
+    drawTornado(ctx, fx.x, fx.y, 0.5, state.time * 2, 0.55);
   } else if (fx.kind === "spark" || fx.kind === "impact" || fx.kind === "muzzle") {
     const ang = fx.angle || 0;
     const len = fx.kind === "muzzle" ? 26 : 30;
@@ -969,13 +1016,15 @@ function render() {
   for (const t of state.towers) drawTower(t);
 
   for (const e of state.enemies) {
-    drawMonster(ctx, e.type, e.x, e.y, 0.85, e.anim, e.hurt, e.facing || 1);
+    // 身体中心贴在路径中线，略缩小以免盖住整条路
+    drawMonster(ctx, e.type, e.x, e.y, 0.55, e.anim, e.hurt, e.facing || 1, "center");
     if (e.hp < e.maxHp) {
       const ratio = Math.max(0, e.hp / e.maxHp);
+      const top = e.y - (e.drawH ? e.drawH * 0.55 : 28) - 10;
       ctx.fillStyle = "rgba(26,26,26,0.25)";
-      ctx.fillRect(e.x - 14, e.y - 40, 28, 4);
+      ctx.fillRect(e.x - 14, top, 28, 4);
       ctx.fillStyle = "#c23b3b";
-      ctx.fillRect(e.x - 14, e.y - 40, 28 * ratio, 4);
+      ctx.fillRect(e.x - 14, top, 28 * ratio, 4);
     }
   }
 
@@ -1008,6 +1057,21 @@ function render() {
     ctx.beginPath();
     ctx.arc(pt.x, pt.y, pt.size || 2.2, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // 击杀掉落金币飘字（怪物头顶）
+  for (const ft of state.floatTexts) {
+    const t = Math.max(0, ft.life / ft.maxLife);
+    ctx.globalAlpha = Math.min(1, t * 1.4);
+    ctx.fillStyle = "#c45c26";
+    ctx.strokeStyle = "rgba(255,248,235,0.9)";
+    ctx.lineWidth = 3;
+    ctx.font = "bold 18px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeText(ft.text, ft.x, ft.y);
+    ctx.fillText(ft.text, ft.x, ft.y);
     ctx.globalAlpha = 1;
   }
 }
@@ -1078,7 +1142,11 @@ export function startTower(options) {
     else if (e.code === "Digit4") selectedTower = "archer";
     else if (e.code === "Space") {
       e.preventDefault();
-      if (running) startWave();
+      // 空格可跳过等待，立刻开下一波
+      if (running && state?.pendingNext) {
+        state.nextWaveTimer = 0;
+        startWave();
+      }
       return;
     } else return;
     updateHud();
@@ -1095,9 +1163,7 @@ export function startTower(options) {
       };
     }
   }
-  els.btnWave.onclick = () => {
-    if (running) startWave();
-  };
+  els.btnWave.onclick = null;
 
   hideOtherPanels();
   beginRun();

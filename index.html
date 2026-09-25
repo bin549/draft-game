@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>吃点好的</title>
+  <title>火柴人爱学习</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -12,7 +12,7 @@
     <div class="menu-bg" aria-hidden="true"></div>
     <div class="menu-content">
       <header class="menu-header">
-        <h1>吃点好的</h1>
+        <h1>火柴人爱学习</h1>
       </header>
       <div class="game-grid" id="game-grid">
         <button class="game-card" data-mode="survivor" type="button">
@@ -21,7 +21,7 @@
             <div class="card-meta"><span class="mode-num">01</span><span class="tag">生存</span></div>
             <h2>生存模式</h2>
             <p>选角开局 · 近战/远程分流 · 龙卷风魔法</p>
-            <p class="controls">点击进入 · 选角后开始</p>
+            <p class="controls">WASD 移动 · 鼠标/空格攻击</p>
           </div>
         </button>
         <button class="game-card" data-mode="platform" type="button">
@@ -39,7 +39,7 @@
             <div class="card-meta"><span class="mode-num">03</span><span class="tag defend">塔防</span></div>
             <h2>塔防模式</h2>
             <p>点击即开 · 剑客/骑士近战 · 法师/弓手远程</p>
-            <p class="controls">点击空位建塔 · 空格下一波</p>
+            <p class="controls">点击空位建塔 · 波次自动推进</p>
           </div>
         </button>
         <button class="game-card" data-mode="rhythm" type="button">
@@ -143,7 +143,7 @@
     <div id="overlay-survivor" class="overlay hidden">
       <div class="panel">
         <h2>生存模式</h2>
-        <p class="sub">WASD / 方向键移动 · 武器自动攻击</p>
+        <p class="sub">WASD / 方向键移动 · 鼠标瞄准点击攻击 · 空格也可攻击</p>
         <button id="btn-start-survivor" type="button">选择角色</button>
       </div>
     </div>
@@ -190,7 +190,7 @@
     <div id="overlay-tower" class="overlay hidden">
       <div class="panel">
         <h2>塔防模式</h2>
-        <p class="sub">选择塔种，点击虚线圆位建造 · 空格 / 按钮开始下一波<br />剑客 · 魔法师 · 骑士 · 弓箭手</p>
+        <p class="sub">选择塔种，点击虚线圆位建造 · 波次自动倒计时推进至最后一波<br />剑客 · 魔法师 · 骑士 · 弓箭手</p>
         <button id="btn-start-tower" type="button">开始防守</button>
       </div>
     </div>
@@ -275,6 +275,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js?v=20260325b"></script>
 </body>
 </html>

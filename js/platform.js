@@ -22,6 +22,8 @@ const MOVE_SPEED = 260;
 const FIRE_COOLDOWN = 0.22;
 const ARROW_SPEED = 620;
 const MAX_STAGES = 5;
+const CRIT_CHANCE = 0.18;
+const CRIT_MULT = 2;
 
 let canvas, ctx;
 let els = {};
@@ -197,12 +199,16 @@ function createState(stage = 1) {
       invuln: 0,
       fireTimer: 0,
       damage: s.damage,
+      critChance: CRIT_CHANCE,
+      critMult: CRIT_MULT,
       fireCooldown: s.fireCooldown,
       projectileSpeed: s.projectileSpeed,
     },
     projectiles: [],
     meleeFx: [],
     particles: [],
+    shake: 0,
+    shakeMag: 0,
     won: false,
   };
 }
@@ -308,6 +314,22 @@ function resolvePlatforms(ent, dt) {
   return null;
 }
 
+function rollCritDamage(base) {
+  const p = state.player;
+  const chance = p.critChance ?? CRIT_CHANCE;
+  const mult = p.critMult ?? CRIT_MULT;
+  const crit = Math.random() < chance;
+  return {
+    damage: crit ? Math.round(base * mult) : base,
+    crit,
+  };
+}
+
+function triggerShake(mag = 5, dur = 0.16) {
+  state.shake = Math.max(state.shake || 0, dur);
+  state.shakeMag = Math.max(state.shakeMag || 0, mag);
+}
+
 function fireArrow() {
   const p = state.player;
   if (p.fireTimer > 0) return;
@@ -331,6 +353,7 @@ function fireArrow() {
     });
 
     const doomed = [];
+    let anyCrit = false;
     for (const e of state.level.enemies) {
       const body = monsterBodyCenter(e);
       const dx = body.x - p.x;
@@ -340,12 +363,15 @@ function fireArrow() {
       // 大致朝向鼠标一侧
       const dot = dx * Math.cos(angle) + dy * Math.sin(angle);
       if (dot < -10) continue;
-      e.hp -= p.damage;
-      e.hurt = 0.2;
-      e.x += Math.cos(angle) * (p.charId === "knight" ? 24 : 12);
-      addParticle(body.x, body.y, "#8b3d14");
+      const hit = rollCritDamage(p.damage);
+      if (hit.crit) anyCrit = true;
+      e.hp -= hit.damage;
+      e.hurt = hit.crit ? 0.28 : 0.2;
+      e.x += Math.cos(angle) * (p.charId === "knight" ? 24 : 12) * (hit.crit ? 1.35 : 1);
+      addParticle(body.x, body.y, hit.crit ? "#c23b3b" : "#8b3d14");
       if (e.hp <= 0) doomed.push(e);
     }
+    if (anyCrit) triggerShake(6, 0.18);
     for (const e of doomed) {
       const j = state.level.enemies.indexOf(e);
       if (j < 0) continue;
@@ -397,6 +423,8 @@ function advanceStage() {
     weapon: state.player.weapon,
     meleeRange: state.player.meleeRange,
     damage: state.player.damage,
+    critChance: state.player.critChance,
+    critMult: state.player.critMult,
     fireCooldown: state.player.fireCooldown,
     projectileSpeed: state.player.projectileSpeed,
     maxHp: state.player.maxHp,
@@ -416,6 +444,13 @@ function advanceStage() {
 function update(dt) {
   const p = state.player;
   state.time += dt;
+  if (state.shake > 0) {
+    state.shake -= dt;
+    if (state.shake <= 0) {
+      state.shake = 0;
+      state.shakeMag = 0;
+    }
+  }
 
   // 移动
   let mx = 0;
@@ -524,9 +559,11 @@ function update(dt) {
       const dy = body.y - pr.y;
       if (dx * dx + dy * dy < (e.radius + 5) ** 2) {
         pr.hit.add(e);
-        e.hp -= pr.damage;
-        e.hurt = 0.2;
-        addParticle(pr.x, pr.y, "#c45c26");
+        const hit = rollCritDamage(pr.damage);
+        e.hp -= hit.damage;
+        e.hurt = hit.crit ? 0.3 : 0.2;
+        addParticle(pr.x, pr.y, hit.crit ? "#c23b3b" : "#c45c26");
+        if (hit.crit) triggerShake(5.5, 0.16);
         state.projectiles.splice(i, 1);
         if (e.hp <= 0) {
           state.score += e.score;
@@ -667,8 +704,14 @@ function render() {
   const viewW = window.innerWidth;
   const viewH = window.innerHeight;
   const cam = state.camera;
+  const shakeX =
+    state.shake > 0 ? (Math.random() - 0.5) * 2 * (state.shakeMag || 5) : 0;
+  const shakeY =
+    state.shake > 0 ? (Math.random() - 0.5) * 2 * (state.shakeMag || 5) : 0;
 
   ctx.clearRect(0, 0, viewW, viewH);
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
 
   // 天空渐变
   const sky = ctx.createLinearGradient(0, 0, 0, viewH);
@@ -676,7 +719,7 @@ function render() {
   sky.addColorStop(0.55, "#e8e4d8");
   sky.addColorStop(1, "#d4cbb8");
   ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.fillRect(-8, -8, viewW + 16, viewH + 16);
 
   // 远景山丘
   ctx.fillStyle = "rgba(26,26,26,0.06)";
@@ -753,12 +796,13 @@ function render() {
   ctx.strokeStyle = "rgba(26,26,26,0.45)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.arc(mouse.x, mouse.y, 8, 0, Math.PI * 2);
-  ctx.moveTo(mouse.x - 12, mouse.y);
-  ctx.lineTo(mouse.x + 12, mouse.y);
-  ctx.moveTo(mouse.x, mouse.y - 12);
-  ctx.lineTo(mouse.x, mouse.y + 12);
+  ctx.arc(mouse.x - shakeX, mouse.y - shakeY, 8, 0, Math.PI * 2);
+  ctx.moveTo(mouse.x - shakeX - 12, mouse.y - shakeY);
+  ctx.lineTo(mouse.x - shakeX + 12, mouse.y - shakeY);
+  ctx.moveTo(mouse.x - shakeX, mouse.y - shakeY - 12);
+  ctx.lineTo(mouse.x - shakeX, mouse.y - shakeY + 12);
   ctx.stroke();
+  ctx.restore();
 }
 
 function loop(ts) {

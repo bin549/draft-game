@@ -10,7 +10,7 @@ const LEVELS = [
     id: "tattoo",
     name: "精忠报国",
     desc: "躲开妈妈的刺字 · 空格闪避",
-    hint: "妈妈说「快点趴下」时，听节拍按空格躲开针尖",
+    hint: "听节拍按空格躲开针尖",
     beats: 16,
   },
   {
@@ -24,17 +24,22 @@ const LEVELS = [
     id: "chop",
     name: "斩台惊魂",
     desc: "躲开刽子手砍头 · 空格缩头",
-    hint: "刀落下前一瞬间按空格把头缩回去",
+    hint: "刀落下前缩头 · 失手一次即失败",
     beats: 14,
   },
   {
     id: "shoot",
     name: "靶场齐射",
-    desc: "跟着节奏射靶 · 空格放箭",
-    hint: "靶心高亮时按空格射中",
+    desc: "固定放箭 · 靶心飞来",
+    hint: "靶心经过准星时按空格放箭",
     beats: 16,
   },
 ];
+
+/** 射击关：固定准星（归一化坐标）与靶心移速（px / 拍） */
+const SHOOT_AIM = { x: 0.55, y: 0.4 };
+const SHOOT_ARCHER = { x: 0.22, y: 0.72 };
+const SHOOT_SPEED = 200;
 
 let canvas, ctx;
 let els = {};
@@ -117,12 +122,16 @@ function createPlayState(level) {
     hurdles: [],
     chopSwing: 0,
     headPullAmt: 0,
+    headFallen: false,
+    headFall: null, // { x, y, vy, rot, vr }
+    failTimer: 0, // 斩台失败后短暂播动画再结算
     aimPulse: 0,
     arrows: [],
     targetHits: [],
-    targets: [0, 1],
+    movingTargets: [],
     activeTarget: 0,
     done: false,
+    endless: level.id === "shoot",
   };
 }
 
@@ -186,12 +195,12 @@ function drawLevelPreview(g, id, w, h) {
     drawHurdles(g, 10, h * 0.72, w - 20, 0);
     drawRunner(g, w * 0.45, h * 0.55, 0.85, 0.5);
   } else if (id === "chop") {
-    drawBlock(g, w * 0.4, h * 0.74, 0.75);
-    drawVictimHead(g, w * 0.4, h * 0.58, 0.75, 0);
-    drawExecutioner(g, w * 0.62, h * 0.64, 0.72, 0.55);
+    drawBlock(g, w * 0.38, h * 0.74, 0.75);
+    drawVictimHead(g, w * 0.38, h * 0.58, 0.75, 0);
+    drawExecutioner(g, w * 0.58, h * 0.64, 0.78, 0.95);
   } else {
-    drawArcherFG(g, w * 0.3, h * 0.78, 0.7, 0);
-    drawTarget(g, w * 0.72, h * 0.35, 0.55, true);
+    drawArcherFG(g, w * 0.28, h * 0.78, 0.7, 0.4);
+    drawTarget(g, w * 0.72, h * 0.4, 0.5, true);
   }
 }
 
@@ -203,6 +212,11 @@ function startLevel(id) {
   state.hurdles = [];
   for (let i = 0; i < selectedLevel.beats; i++) {
     state.hurdles.push({ beat: 2 + i * 2, passed: false });
+  }
+  // 射击：靶心与拍点绑定，无限续生
+  state.movingTargets = [];
+  for (const c of state.cues) {
+    state.movingTargets.push({ beat: c.beat, destroyed: false, tripped: false });
   }
   mode = "play";
   els.levelSelect.classList.add("hidden");
@@ -225,7 +239,7 @@ function updateHud() {
 }
 
 function judgeInput() {
-  if (mode !== "play" || !state || state.done) return;
+  if (mode !== "play" || !state || state.done || state.failTimer > 0) return;
   const beatTime = state.time / BEAT;
   const id = state.level.id;
 
@@ -236,19 +250,24 @@ function judgeInput() {
   else if (id === "shoot") fireShotVisual();
 
   // 找最近未判定 cue — 仅 Perfect / Miss
-  const HIT = 0.22;
+  // 跨栏 / 刺字：略放宽提前按，减轻「画面已到、音轨还早」的滞后感
+  const HIT = id === "hurdle" || id === "tattoo" ? 0.3 : 0.22;
+  const EARLY = id === "hurdle" ? 0.42 : id === "tattoo" ? 0.34 : 0.22;
   let best = null;
   let bestAbs = 999;
   for (const c of state.cues) {
     if (c.judged) continue;
-    const d = Math.abs(beatTime - c.beat);
-    if (d < bestAbs) {
-      bestAbs = d;
+    const d = beatTime - c.beat;
+    const abs = Math.abs(d);
+    // 过早超出 EARLY、过晚超出 HIT 都不收
+    if (d < -EARLY || d > HIT) continue;
+    if (abs < bestAbs) {
+      bestAbs = abs;
       best = c;
     }
   }
   // 窗口外按下：不结算（等过点自动 Miss），也不显示 Good/太早
-  if (!best || bestAbs > HIT) return;
+  if (!best) return;
 
   best.judged = true;
   best.hit = true;
@@ -280,22 +299,15 @@ function maxCueMotion(beat, cues, wind, follow) {
 }
 
 function fireShotVisual(cue) {
-  const idx = cue
-    ? state.cues.indexOf(cue)
-    : Math.max(
-        0,
-        state.cues.findIndex((c) => !c.judged && c.beat >= state.beat - 0.2)
-      );
-  const target = ((idx >= 0 ? idx : state.activeTarget) % 2 + 2) % 2;
-  state.activeTarget = target;
   state.aimPulse = 0.35;
+  // 弓固定朝准星射击
   state.arrows.push({
-    x: 0.28,
-    y: 0.78,
-    tx: target === 0 ? 0.62 : 0.78,
-    ty: target === 0 ? 0.28 : 0.36,
-    life: 0.55,
-    maxLife: 0.55,
+    x: SHOOT_ARCHER.x,
+    y: SHOOT_ARCHER.y - 0.06,
+    tx: SHOOT_AIM.x,
+    ty: SHOOT_AIM.y,
+    life: 0.42,
+    maxLife: 0.42,
     hit: false,
   });
 }
@@ -313,10 +325,11 @@ function applySuccessAction(cue) {
   } else if (id === "chop") {
     state.headPullAmt = 1;
   } else if (id === "shoot") {
-    // 箭已在按下时发出；成功则在靶上留命中涟漪
-    const target = state.cues.indexOf(cue) % 2;
+    const t = state.movingTargets.find((x) => x.beat === cue.beat);
+    if (t) t.destroyed = true;
     state.targetHits.push({
-      target,
+      x: SHOOT_AIM.x,
+      y: SHOOT_AIM.y,
       life: 0.55,
       maxLife: 0.55,
     });
@@ -345,9 +358,24 @@ function missCue(c) {
     }
     state.bubble = { text: "哎呦!", life: 0.8 };
   } else if (id === "chop") {
-    state.bubble = { text: "咔！", life: 0.7 };
+    state.bubble = { text: "咔！", life: 1.1 };
+    state.headFallen = true;
+    state.headPullAmt = 0;
+    state.headFall = {
+      x: 0,
+      y: 0,
+      vy: -80,
+      rot: 0,
+      vr: 3.5 + Math.random() * 2,
+    };
+    state.hp = 0;
+    state.failTimer = 0.85; // 掉头动画后再出结果
+    updateHud();
+    return;
   } else if (id === "shoot") {
     state.bubble = { text: "脱靶…", life: 0.7 };
+    const t = state.movingTargets.find((x) => x.beat === c.beat);
+    if (t) t.tripped = true;
   }
   updateHud();
   if (state.hp <= 0) {
@@ -379,6 +407,27 @@ function endLevel(cleared) {
 
 function update(dt) {
   if (mode !== "play" || !state || state.done) return;
+  // 失败演出期间只播动画，不再结算拍点
+  if (state.failTimer > 0) {
+    state.time += dt;
+    state.anim += dt;
+    if (state.feedbackTimer > 0) state.feedbackTimer -= dt;
+    if (state.bubble) {
+      state.bubble.life -= dt;
+      if (state.bubble.life <= 0) state.bubble = null;
+    }
+    if (state.headFall) {
+      state.headFall.vy += 980 * dt;
+      state.headFall.y += state.headFall.vy * dt;
+      state.headFall.rot += state.headFall.vr * dt;
+    }
+    state.failTimer -= dt;
+    if (state.failTimer <= 0) {
+      state.failTimer = 0;
+      endLevel(false);
+    }
+    return;
+  }
   state.time += dt;
   state.anim += dt;
   state.beat = state.time / BEAT;
@@ -393,7 +442,7 @@ function update(dt) {
   if (state.jump > 0) state.jump -= dt;
   if (state.chopSwing > 0) state.chopSwing -= dt;
   // 缩头平滑回弹，不瞬切
-  if (state.headPullAmt > 0) {
+  if (state.headPullAmt > 0 && !state.headFallen) {
     state.headPullAmt = Math.max(0, state.headPullAmt - dt * 1.6);
   }
   if (state.aimPulse > 0) state.aimPulse -= dt;
@@ -418,6 +467,23 @@ function update(dt) {
   for (let i = state.arrows.length - 1; i >= 0; i--) {
     state.arrows[i].life -= dt;
     if (state.arrows[i].life <= 0) state.arrows.splice(i, 1);
+  }
+
+  // 射击关：无限续生靶心 / 拍点
+  if (state.level.id === "shoot" && state.endless) {
+    const last = state.cues[state.cues.length - 1];
+    if (last && state.beat > last.beat - 8) {
+      const nextBeat = last.beat + 2;
+      state.cues.push({ beat: nextBeat, hit: false, judged: false, result: null });
+      state.movingTargets.push({ beat: nextBeat, destroyed: false, tripped: false });
+    }
+    // 清理过远的旧 cue，避免数组无限涨
+    while (state.cues.length > 24 && state.cues[0].judged && state.beat > state.cues[0].beat + 4) {
+      const old = state.cues.shift();
+      const ti = state.movingTargets.findIndex((t) => t.beat === old.beat);
+      if (ti >= 0) state.movingTargets.splice(ti, 1);
+    }
+    return; // 不按固定拍结束
   }
 
   // 结束
@@ -616,8 +682,10 @@ function drawExecutioner(ctx, x, y, s, swing) {
   ctx.translate(x, y);
   ctx.scale(s, s);
   ctx.strokeStyle = "#1a1a1a";
+  ctx.fillStyle = "#1a1a1a";
   ctx.lineWidth = 2.2;
   ctx.lineCap = "round";
+  ctx.lineJoin = "round";
   ctx.beginPath();
   ctx.arc(0, -34, 7, 0, Math.PI * 2);
   ctx.stroke();
@@ -628,16 +696,31 @@ function drawExecutioner(ctx, x, y, s, swing) {
   ctx.moveTo(0, 2);
   ctx.lineTo(8, 22);
   ctx.stroke();
-  // 刀
-  const ang = -1.1 + swing * 2.2;
+  // 长刀：挥到位时刀刃够到左侧脖子
+  const ang = -1.25 + swing * 2.55;
   ctx.save();
-  ctx.translate(6, -20);
+  ctx.translate(4, -18);
   ctx.rotate(ang);
+  // 刀柄
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(0, 8);
+  ctx.lineTo(0, 0);
+  ctx.stroke();
+  // 刀刃（加长）
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.lineTo(0, -36);
-  ctx.lineTo(10, -28);
-  ctx.lineTo(0, -22);
+  ctx.lineTo(-4, -18);
+  ctx.lineTo(0, -72);
+  ctx.lineTo(12, -58);
+  ctx.lineTo(5, -16);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // 护手
+  ctx.beginPath();
+  ctx.moveTo(-8, 0);
+  ctx.lineTo(8, 0);
   ctx.stroke();
   ctx.restore();
   ctx.restore();
@@ -659,9 +742,14 @@ function drawBlock(ctx, x, y, s) {
   ctx.restore();
 }
 
-function drawVictimHead(ctx, x, y, s, pull) {
+function drawVictimHead(ctx, x, y, s, pull, fall = null) {
   ctx.save();
-  ctx.translate(x - pull * 20, y);
+  if (fall) {
+    ctx.translate(x + fall.x, y + fall.y);
+    ctx.rotate(fall.rot);
+  } else {
+    ctx.translate(x - pull * 20, y);
+  }
   ctx.scale(s, s);
   ctx.strokeStyle = "#1a1a1a";
   ctx.fillStyle = "#1a1a1a";
@@ -719,6 +807,10 @@ function drawTarget(ctx, x, y, s, lit) {
   ctx.scale(s, s);
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // 靶面
   ctx.strokeRect(-22, -22, 44, 44);
   ctx.beginPath();
   ctx.arc(0, 0, 14, 0, Math.PI * 2);
@@ -732,8 +824,30 @@ function drawTarget(ctx, x, y, s, lit) {
     ctx.arc(0, 0, 7, 0, Math.PI * 2);
     ctx.fill();
   }
+
+  // 支架：竖杆 + 左右撑脚（脚底落在虚线轨道上）
+  ctx.beginPath();
+  ctx.moveTo(0, 22);
+  ctx.lineTo(0, 46);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, 46);
+  ctx.lineTo(-16, 54);
+  ctx.moveTo(0, 46);
+  ctx.lineTo(16, 54);
+  ctx.stroke();
+  // 底座横档
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-18, 54);
+  ctx.lineTo(18, 54);
+  ctx.stroke();
+
   ctx.restore();
 }
+
+/** 靶心中心到支架脚底的本地距离（未乘 scale） */
+const TARGET_STAND_FOOT = 54;
 
 function drawBeatBar(ctx, w, h) {
   if (!state) return;
@@ -790,17 +904,26 @@ function renderPlay() {
   ctx.fillText(state.level.hint, cx, 72);
 
   if (id === "tattoo") {
-    // 妈妈刺字：按 2 拍循环，与玩家判定无关
+    // 刺下峰值对齐判定拍（偶数拍：2/4/6…），避免「音轨已到、针还在蓄力」的滞后
     const phase = ((state.beat % 2) + 2) % 2; // 0..2
     let stab = 0;
-    if (phase < 1.1) stab = phase / 1.1; // 蓄力
-    else if (phase < 1.35) stab = 1; // 刺下
-    else stab = Math.max(0, 1 - (phase - 1.35) / 0.65); // 收回
-    if (phase > 0.35 && phase < 1.05) {
+    if (phase >= 1.05) {
+      // 上半拍后段：蓄力，临近下一判定拍
+      stab = (phase - 1.05) / 0.95;
+    } else if (phase < 0.28) {
+      // 判定拍附近：刺下
+      stab = 1;
+    } else if (phase < 0.85) {
+      // 收回
+      stab = Math.max(0, 1 - (phase - 0.28) / 0.57);
+    }
+
+    // 「快点趴下」仅开局提示一次
+    if (state.beat < 1.8) {
       drawBubble(ctx, cx - 70, cy - 100, "快点趴下!");
     }
-    drawMom(ctx, cx - 55, cy + 40, 1.35, stab * 1.1);
-    // 交互只动儿子
+
+    drawMom(ctx, cx - 55, cy + 40, 1.35, stab * 1.15);
     const dodgeT = Math.max(0, state.sonDodge);
     const hitShake = state.sonHit > 0 ? Math.sin(state.sonHit * 40) * 4 : 0;
     drawSonKneel(ctx, cx + 45 + hitShake, cy + 50, 1.35, dodgeT);
@@ -809,80 +932,128 @@ function renderPlay() {
     const scroll = state.beat * 0.35;
     drawHurdles(ctx, 40, cy + 50, w - 80, scroll);
 
-    // 每根栏杆按自己的拍点连续移动：越过玩家后继续向左滑出
+    // 每根栏杆按自己的拍点连续移动
+    // 提前量加大：判定拍点时栏杆仍在身前，按空格与起跳观感对齐
     const runnerX = cx - 40;
     const speed = 170;
+    const leadPx = 96;
     for (const h of state.hurdles) {
       const dist = h.beat - state.beat;
-      const hx = runnerX + dist * speed;
+      const hx = runnerX + dist * speed + leadPx;
       if (hx < -40 || hx > w + 40) continue;
       drawOneHurdle(ctx, hx, cy + 40, !!h.tripped);
     }
     drawRunner(ctx, runnerX, cy + 20, 1.4, state.jump);
   } else if (id === "chop") {
     drawBlock(ctx, cx - 35, cy + 60, 1.5);
-    // 交互只控制缩头
-    drawVictimHead(ctx, cx - 35, cy + 10, 1.4, state.headPullAmt);
-    // 刽子手按 2 拍循环挥刀，与判定无关
-    const phase = ((state.beat % 2) + 2) % 2;
+    // 头：缩头 / 失败掉落
+    if (state.headFallen && state.headFall) {
+      drawVictimHead(ctx, cx - 35, cy + 10, 1.4, 0, state.headFall);
+    } else {
+      drawVictimHead(ctx, cx - 35, cy + 10, 1.4, state.headPullAmt);
+    }
+    // 刽子手：失败时停在落刀姿态
     let swing = 0;
-    if (phase < 1.15) swing = phase / 1.15;
-    else if (phase < 1.4) swing = 1;
-    else swing = Math.max(0, 1 - (phase - 1.4) / 0.6);
-    drawExecutioner(ctx, cx + 55, cy + 25, 1.4, swing);
+    if (state.headFallen) {
+      swing = 1;
+    } else {
+      const phase = ((state.beat % 2) + 2) % 2;
+      if (phase < 1.15) swing = phase / 1.15;
+      else if (phase < 1.4) swing = 1;
+      else swing = Math.max(0, 1 - (phase - 1.4) / 0.6);
+    }
+    // 站近一点，长刀够到脖子
+    drawExecutioner(ctx, cx + 38, cy + 22, 1.45, swing);
   } else if (id === "shoot") {
-    ctx.strokeStyle = "rgba(26,26,26,0.25)";
+    const aimX = w * SHOOT_AIM.x;
+    const aimY = h * SHOOT_AIM.y;
+    const archerX = w * SHOOT_ARCHER.x;
+    const archerY = h * SHOOT_ARCHER.y;
+    const targetScale = 1.05;
+    // 虚线轨道：贴在支架脚底之下
+    const railY = aimY + TARGET_STAND_FOOT * targetScale + 2;
+
+    // 靶道：从右向左，位于支架下方
+    ctx.strokeStyle = "rgba(26,26,26,0.28)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 10]);
+    ctx.beginPath();
+    ctx.moveTo(w + 20, railY);
+    ctx.lineTo(-20, railY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 固定准星（对准靶心中心）
+    const pulse = cueMotion(
+      state.beat,
+      state.cues.find((c) => !c.judged)?.beat ?? state.beat,
+      0.35,
+      0.2
+    );
+    ctx.strokeStyle = pulse > 0.4 ? "#c45c26" : "#1a1a1a";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(40, h * 0.42);
-    ctx.lineTo(w - 40, h * 0.7);
+    ctx.moveTo(aimX - 16, aimY);
+    ctx.lineTo(aimX + 16, aimY);
+    ctx.moveTo(aimX, aimY - 16);
+    ctx.lineTo(aimX, aimY + 16);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(aimX, aimY, 10, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 两靶各自按对应拍点连续亮起/熄灭
-    const lit0 = state.cues.some((c, i) => i % 2 === 0 && cueMotion(state.beat, c.beat, 0.4, 0.25) > 0.35);
-    const lit1 = state.cues.some((c, i) => i % 2 === 1 && cueMotion(state.beat, c.beat, 0.4, 0.25) > 0.35);
-    drawTarget(ctx, w * 0.62, h * 0.28, 1.1, lit0);
-    drawTarget(ctx, w * 0.78, h * 0.36, 0.95, lit1);
+    // 移动靶心：到拍点时正好经过准星
+    for (const t of state.movingTargets) {
+      if (t.destroyed && state.beat > t.beat + 0.15) continue;
+      const dist = t.beat - state.beat;
+      const tx = aimX + dist * SHOOT_SPEED;
+      const ty = aimY;
+      if (tx < -60 || tx > w + 80) continue;
+      const lit = !t.destroyed && !t.tripped && Math.abs(dist) < 0.35;
+      const scale = t.destroyed ? 0.7 : t.tripped ? 0.85 : targetScale;
+      ctx.globalAlpha = t.destroyed ? 0.35 : t.tripped ? 0.45 : 1;
+      drawTarget(ctx, tx, ty, scale, lit);
+      ctx.globalAlpha = 1;
+    }
 
-    // 命中涟漪（不打断下一拍）
+    // 命中涟漪（准星处）
     for (const hit of state.targetHits) {
       const fade = hit.life / hit.maxLife;
-      const tx = hit.target === 0 ? w * 0.62 : w * 0.78;
-      const ty = hit.target === 0 ? h * 0.28 : h * 0.36;
       ctx.globalAlpha = fade;
       ctx.strokeStyle = "#3a8f6e";
       ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(tx, ty, 18 + (1 - fade) * 28, 0, Math.PI * 2);
+      ctx.arc(w * hit.x, h * hit.y, 18 + (1 - fade) * 28, 0, Math.PI * 2);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
-    ctx.strokeStyle = "#1a1a1a";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(w * 0.48, h * 0.3, 6, 0, Math.PI * 2);
-    ctx.stroke();
-    const drawAmt = state.aimPulse > 0 ? Math.min(1, state.aimPulse * 3) : 0.35;
-    drawArcherFG(ctx, w * 0.28, h * 0.78, 1.5, drawAmt);
+    const drawAmt = state.aimPulse > 0 ? Math.min(1, state.aimPulse * 3) : 0.4;
+    drawArcherFG(ctx, archerX, archerY, 1.5, drawAmt);
+
     for (const a of state.arrows) {
-      const t = 1 - a.life / (a.maxLife || 0.55);
-      const fly = Math.min(1, t / 0.7);
+      const t = 1 - a.life / (a.maxLife || 0.42);
+      const fly = Math.min(1, t / 0.75);
       const ax = w * (a.x + (a.tx - a.x) * fly);
       const ay = h * (a.y + (a.ty - a.y) * fly);
+      const ang = Math.atan2(a.ty - a.y, a.tx - a.x);
+      ctx.save();
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
       ctx.strokeStyle = "#1a1a1a";
       ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(ax - 12, ay + 2);
-      ctx.lineTo(ax + 12, ay - 4);
+      ctx.moveTo(-14, 0);
+      ctx.lineTo(14, 0);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(ax + 12, ay - 4);
-      ctx.lineTo(ax + 6, ay - 8);
-      ctx.lineTo(ax + 7, ay);
+      ctx.moveTo(14, 0);
+      ctx.lineTo(6, -5);
+      ctx.lineTo(6, 5);
       ctx.closePath();
       ctx.fillStyle = "#1a1a1a";
       ctx.fill();
+      ctx.restore();
     }
   }
 

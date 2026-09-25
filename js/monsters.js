@@ -27,6 +27,10 @@ export const MONSTER_DEFS = {
     scale: 0.48,
     color: "#c45c26",
     unlockStage: 1,
+    attack: "fireball",
+    preferRange: 210,
+    fireCooldown: 1.35,
+    fireballSpeed: 210,
   }),
   "nine-tail-fox-2": def({
     name: "九尾狐·成",
@@ -41,6 +45,10 @@ export const MONSTER_DEFS = {
     scale: 0.54,
     color: "#a84820",
     unlockStage: 2,
+    attack: "fireball",
+    preferRange: 240,
+    fireCooldown: 1.1,
+    fireballSpeed: 240,
   }),
   "eyeball-1": def({
     name: "眼球·小",
@@ -184,10 +192,17 @@ const ALIASES = {
   queen: "queen-1",
 };
 
-/** @type {Record<string, { canvas: HTMLCanvasElement, w: number, h: number }>} */
+/** @type {Record<string, { canvas: HTMLCanvasElement, silhouette: HTMLCanvasElement, w: number, h: number }>} */
 const images = Object.create(null);
 let ready = false;
 let loadPromise = null;
+
+/** 开发时强制重载，避免旧剪影缓存 */
+export function resetMonsterCache() {
+  ready = false;
+  loadPromise = null;
+  for (const k of Object.keys(images)) delete images[k];
+}
 
 function loadImage(src) {
   return new Promise((resolve, reject) => {
@@ -229,7 +244,7 @@ function punchAndCrop(img, threshold = 28) {
   }
   g.putImageData(data, 0, 0);
   if (maxX < minX || maxY < minY) {
-    return { canvas: tmp, w: w0, h: h0 };
+    return packSprite(tmp);
   }
   const pad = 1;
   minX = Math.max(0, minX - pad);
@@ -242,7 +257,30 @@ function punchAndCrop(img, threshold = 28) {
   out.width = cw;
   out.height = ch;
   out.getContext("2d").drawImage(tmp, minX, minY, cw, ch, 0, 0, cw, ch);
-  return { canvas: out, w: cw, h: ch };
+  return packSprite(out);
+}
+
+/** 彩色图 + 纯黑剪影（用于屏幕空间描边） */
+function packSprite(src) {
+  const silhouette = document.createElement("canvas");
+  silhouette.width = src.width;
+  silhouette.height = src.height;
+  const g = silhouette.getContext("2d");
+  g.drawImage(src, 0, 0);
+  const data = g.getImageData(0, 0, src.width, src.height);
+  const d = data.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] > 18) {
+      d[i] = 0x1a;
+      d[i + 1] = 0x1a;
+      d[i + 2] = 0x1a;
+      d[i + 3] = 255;
+    } else {
+      d[i + 3] = 0;
+    }
+  }
+  g.putImageData(data, 0, 0);
+  return { canvas: src, silhouette, w: src.width, h: src.height };
 }
 
 export function loadMonsters() {
@@ -324,6 +362,11 @@ export function makeMonsterStats(type, stage = 1, extras = {}) {
     hurt: 0,
     drawH,
     drawScale,
+    attack: def.attack || "melee",
+    preferRange: def.preferRange || 0,
+    fireCooldown: def.fireCooldown || 0,
+    fireTimer: def.fireCooldown ? Math.random() * (def.fireCooldown * 0.6) : 0,
+    fireballSpeed: def.fireballSpeed || 200,
   };
 }
 
@@ -378,12 +421,28 @@ export function drawMonster(
 
   const dw = img.w * s;
   const dh = img.h * s;
+  const oy = anchor === "feet" ? -dh : -dh / 2;
 
   ctx.save();
   ctx.translate(x, y);
   if (facing < 0) ctx.scale(-1, 1);
   if (hurt > 0) ctx.globalAlpha = 0.55 + Math.sin(hurt * 40) * 0.25;
-  const oy = anchor === "feet" ? -dh : -dh / 2;
+
+  // 屏幕空间细描边（与线稿接近的细线，避免糊成一圈粗边）
+  const o = 1.25;
+  const sil = img.silhouette || img.canvas;
+  for (const [ox, oyOff] of [
+    [-o, 0],
+    [o, 0],
+    [0, -o],
+    [0, o],
+    [-o, -o],
+    [o, -o],
+    [-o, o],
+    [o, o],
+  ]) {
+    ctx.drawImage(sil, -dw / 2 + ox, oy + oyOff, dw, dh);
+  }
   ctx.drawImage(img.canvas, -dw / 2, oy, dw, dh);
   ctx.restore();
 }

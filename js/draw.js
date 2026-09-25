@@ -801,70 +801,123 @@ export function drawSprout(ctx, x, y, scale = 1, variant = 0, anim = 0) {
  * tip 在地面接触点，整体向上展开
  */
 export function drawTornado(ctx, x, y, scale = 1, anim = 0, intensity = 1) {
+  const sc = Number.isFinite(scale) && scale > 0.01 ? scale : 0.4;
+  const inten = Number.isFinite(intensity) ? Math.max(0.2, Math.min(2, intensity)) : 0.5;
+  const spin = (Number.isFinite(anim) ? anim : 0) * 8;
+
+  ctx.save();
+  try {
+    ctx.translate(x, y);
+    ctx.scale(sc, sc);
+    ctx.strokeStyle = STROKE;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    const ellipseSafe = (ox, oy, rx, ry, rot, a0, a1) => {
+      let erx = Number.isFinite(rx) ? Math.abs(rx) : 0.5;
+      let ery = Number.isFinite(ry) ? Math.abs(ry) : 0.5;
+      erx = Math.max(0.5, erx);
+      ery = Math.max(0.5, ery);
+      ctx.beginPath();
+      ctx.ellipse(ox, oy, erx, ery, rot || 0, a0 || 0, a1 == null ? Math.PI * 2 : a1);
+      ctx.stroke();
+    };
+
+    const layers = 10;
+    for (let i = 0; i < layers; i++) {
+      const t = i / (layers - 1);
+      const yy = -4 - t * 70;
+      const rx = 3 + t * t * 38 * inten;
+      const ry = 2.5 + t * 5;
+      const wobble = Math.sin(spin + i * 1.1) * (2 + t * 4);
+      const rot = spin * 0.35 + i * 0.4;
+
+      ctx.save();
+      ctx.translate(wobble, yy);
+      ctx.rotate(rot * 0.08);
+      ctx.lineWidth = 1.4 + (1 - t) * 0.6;
+      ctx.globalAlpha = 0.55 + t * 0.4;
+
+      ellipseSafe(0, 0, rx, ry, 0, 0, Math.PI * 2);
+      ellipseSafe(1.5, 0.5, rx * 0.85, ry * 0.9, 0.3, spin, spin + Math.PI * 1.3);
+      if (i > layers * 0.45) {
+        ellipseSafe(-2, -1, rx * 0.7, ry * 0.75, -0.2, -spin, -spin + Math.PI);
+      }
+      ctx.restore();
+    }
+
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.8;
+    const topY = -72;
+    const topW = Math.max(8, 42 * inten);
+    for (let k = 0; k < 5; k++) {
+      const oy = topY - 4 + k * 3.5;
+      const ox = Math.sin(spin * 0.5 + k) * 4;
+      ellipseSafe(ox, oy, Math.max(2, topW - k * 3), 5 + k * 0.8, 0, 0, Math.PI * 2);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-2, 2);
+    ctx.lineTo(0, 6);
+    ctx.lineTo(2, 2);
+    ctx.stroke();
+  } catch (_) {
+    // 忽略绘制异常，避免渲染循环卡死
+  }
+  ctx.restore();
+}
+
+/** 九尾狐火球：橙心 + 乱线外焰 */
+export function drawFireball(ctx, x, y, angle = 0, life = 1, scale = 1) {
   ctx.save();
   ctx.translate(x, y);
+  ctx.rotate(angle);
   ctx.scale(scale, scale);
-
-  const spin = anim * 8;
-  ctx.strokeStyle = STROKE;
+  const a = Math.max(0.2, Math.min(1, life));
+  ctx.globalAlpha = a;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // 由下到上若干层椭圆乱线
-  const layers = 10;
-  for (let i = 0; i < layers; i++) {
-    const t = i / (layers - 1);
-    const yy = -4 - t * 70;
-    const rx = 3 + t * t * 38 * intensity;
-    const ry = 2.5 + t * 5;
-    const wobble = Math.sin(spin + i * 1.1) * (2 + t * 4);
-    const rot = spin * 0.35 + i * 0.4;
-
-    ctx.save();
-    ctx.translate(wobble, yy);
-    ctx.rotate(rot * 0.08);
-    ctx.lineWidth = 1.4 + (1 - t) * 0.6;
-    ctx.globalAlpha = 0.55 + t * 0.4;
-
-    // 主椭圆
-    ctx.beginPath();
-    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // 乱线叠加：不完整弧
-    ctx.beginPath();
-    ctx.ellipse(1.5, 0.5, rx * 0.85, ry * 0.9, 0.3, spin, spin + Math.PI * 1.3);
-    ctx.stroke();
-
-    if (i > layers * 0.45) {
-      ctx.beginPath();
-      ctx.ellipse(-2, -1, rx * 0.7, ry * 0.75, -0.2, -spin, -spin + Math.PI);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // 顶部云团乱线
-  ctx.globalAlpha = 0.85;
-  ctx.lineWidth = 1.8;
-  const topY = -72;
-  const topW = 42 * intensity;
-  for (let k = 0; k < 5; k++) {
-    const oy = topY - 4 + k * 3.5;
-    const ox = Math.sin(spin * 0.5 + k) * 4;
-    ctx.beginPath();
-    ctx.ellipse(ox, oy, topW - k * 3, 5 + k * 0.8, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  // 地面接触尖点
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = 2;
+  // 尾焰
+  ctx.strokeStyle = "#c45c26";
+  ctx.lineWidth = 2.2;
   ctx.beginPath();
-  ctx.moveTo(-2, 2);
-  ctx.lineTo(0, 6);
-  ctx.lineTo(2, 2);
+  ctx.moveTo(-14, 0);
+  ctx.quadraticCurveTo(-8, -5, -2, -1);
+  ctx.moveTo(-14, 0);
+  ctx.quadraticCurveTo(-8, 5, -2, 1);
   ctx.stroke();
+
+  // 外焰乱线
+  ctx.strokeStyle = STROKE;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.ellipse(2, 0, 9, 7, 0.15, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(1, -1, 7, 5.5, -0.2, 0.4, Math.PI * 1.6);
+  ctx.stroke();
+
+  // 内核
+  ctx.fillStyle = "#e8a050";
+  ctx.beginPath();
+  ctx.ellipse(3, 0, 4.5, 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#a84820";
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  // 火星点
+  ctx.fillStyle = STROKE;
+  for (let i = 0; i < 3; i++) {
+    const px = -6 - i * 3;
+    const py = Math.sin(life * 20 + i * 2) * (2 + i);
+    ctx.beginPath();
+    ctx.arc(px, py, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
   ctx.restore();
 }

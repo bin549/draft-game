@@ -283,9 +283,15 @@ html, body {
 }
 
 .magic-card:disabled,
-.magic-card.cooling {
-  opacity: 0.55;
+.magic-card.cooling,
+.magic-card.locked {
+  opacity: 0.45;
   cursor: not-allowed;
+  filter: grayscale(0.55);
+}
+
+.magic-card.locked .magic-card-cd {
+  color: #8a6a5a;
 }
 
 .magic-card-preview {
