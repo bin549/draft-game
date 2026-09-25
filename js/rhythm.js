@@ -390,7 +390,7 @@ function missCue(c) {
   const id = state.level.id;
   if (id === "tattoo") {
     state.sonHit = 0.8;
-    state.bubble = { text: "妈妈你好狠!!!", life: 1.4 };
+    state.bubble = { text: "妈妈你好狠!!!", life: 0.8 };
   } else if (id === "hurdle") {
     const h = state.hurdles.find((x) => x.beat === c.beat);
     if (h) {
@@ -1221,8 +1221,13 @@ export function startRhythm(options) {
   });
 
   els.btnRestart.onclick = () => {
-    els.result.classList.add("hidden");
-    showLevelSelect();
+    // 结算页直接重开当前关卡，不再跳回关卡选择列表
+    const levelId = selectedLevel?.id;
+    if (levelId) {
+      startLevel(levelId);
+    } else {
+      showLevelSelect();
+    }
   };
   showLevelSelect();
 }
