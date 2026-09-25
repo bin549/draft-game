@@ -1,12 +1,17 @@
 import {
-  drawNineTailFox,
-  drawEyeball,
   drawHouse,
   drawSprout,
   drawTornado,
   drawSlash,
 } from "./draw.js";
 import { CHARACTERS, drawCharacter, drawWeaponProjectile } from "./characters.js";
+import {
+  loadMonsters,
+  makeMonsterStats,
+  drawMonster,
+  monsterParticleColor,
+  MONSTER_IDS,
+} from "./monsters.js";
 
 const TOWER_TYPES = Object.fromEntries(
   CHARACTERS.map((c) => [
@@ -26,15 +31,43 @@ const TOWER_TYPES = Object.fromEntries(
 
 const TOWER_ORDER = ["swordsman", "mage", "knight", "archer"];
 
+/** 波次：逐步解锁全部编号怪物，难度递增；轮转保证每种都会出现 */
 const WAVES = [
-  { count: 6, interval: 0.9, types: ["fox"] },
-  { count: 8, interval: 0.75, types: ["fox", "fox", "eyeball"] },
-  { count: 10, interval: 0.65, types: ["fox", "eyeball"] },
-  { count: 12, interval: 0.55, types: ["fox", "eyeball", "eyeball"] },
-  { count: 14, interval: 0.5, types: ["fox", "eyeball"] },
-  { count: 16, interval: 0.45, types: ["eyeball", "fox", "eyeball"] },
-  { count: 18, interval: 0.4, types: ["fox", "eyeball"] },
-  { count: 22, interval: 0.35, types: ["eyeball", "fox", "eyeball"] },
+  {
+    count: 8,
+    interval: 0.95,
+    types: ["nine-tail-fox-1", "eyeball-1"],
+    stage: 1,
+  },
+  {
+    count: 10,
+    interval: 0.8,
+    types: ["nine-tail-fox-1", "eyeball-1", "nine-tail-fox-2", "thief-1"],
+    stage: 2,
+  },
+  {
+    count: 12,
+    interval: 0.7,
+    types: ["eyeball-2", "tiger-1", "thief-1", "nine-tail-fox-2"],
+    stage: 2,
+  },
+  {
+    count: 14,
+    interval: 0.58,
+    types: ["tiger-1", "eyeball-3", "official-1", "tiger-2"],
+    stage: 3,
+  },
+  {
+    count: 16,
+    interval: 0.5,
+    types: ["official-1", "boat-man-1", "tiger-2", "eyeball-3", "nine-tail-fox-2"],
+    stage: 3,
+  },
+  { count: 18, interval: 0.45, types: [...MONSTER_IDS], stage: 4 },
+  { count: 20, interval: 0.4, types: [...MONSTER_IDS], stage: 4 },
+  { count: 22, interval: 0.35, types: [...MONSTER_IDS], stage: 5 },
+  { count: 26, interval: 0.3, types: [...MONSTER_IDS], stage: 5 },
+  { count: 30, interval: 0.26, types: [...MONSTER_IDS], stage: 6 },
 ];
 
 let canvas, ctx;
@@ -237,7 +270,7 @@ function createState() {
     spawnLeft: 0,
     spawnTimer: 0,
     spawnInterval: 0.8,
-    spawnTypes: ["fox"],
+    spawnTypes: ["nine-tail-fox-1"],
     kills: 0,
     time: 0,
     pendingNext: true,
@@ -319,20 +352,14 @@ function pushFx(fx) {
 }
 
 function makeEnemy(type) {
-  const isFox = type === "fox";
-  const waveScale = 1 + state.wave * 0.12;
+  const waveStage = WAVES[Math.max(0, state.wave - 1)]?.stage || state.wave || 1;
+  const stats = makeMonsterStats(type, waveStage);
   return {
-    type,
+    ...stats,
     dist: 0,
     x: state.path[0].x,
     y: state.path[0].y,
-    radius: isFox ? 18 : 22,
-    hp: (isFox ? 40 : 70) * waveScale,
-    maxHp: (isFox ? 40 : 70) * waveScale,
-    speed: (isFox ? 70 : 48) * (1 + state.wave * 0.03),
-    gold: isFox ? 12 : 20,
-    anim: Math.random() * 10,
-    hurt: 0,
+    facing: 1,
   };
 }
 
@@ -346,6 +373,7 @@ function startWave() {
   state.spawnInterval = def.interval;
   state.spawnTimer = 0.15;
   state.spawnTypes = def.types;
+  state.spawnIndex = 0;
   state.pendingNext = false;
   updateHud();
 }
@@ -417,8 +445,9 @@ function update(dt) {
   if (state.waveSpawning) {
     state.spawnTimer -= dt;
     while (state.spawnTimer <= 0 && state.spawnLeft > 0) {
-      const type =
-        state.spawnTypes[Math.floor(Math.random() * state.spawnTypes.length)];
+      // 轮转保证本波 types 中每种都会出现
+      const type = state.spawnTypes[state.spawnIndex % state.spawnTypes.length];
+      state.spawnIndex = (state.spawnIndex || 0) + 1;
       state.enemies.push(makeEnemy(type));
       state.spawnLeft -= 1;
       state.spawnTimer += state.spawnInterval;
@@ -435,8 +464,11 @@ function update(dt) {
     if (e.hurt > 0) e.hurt -= dt;
     e.dist += e.speed * dt;
     const pos = pointOnPath(e.dist);
-    e.x = pos.x;
-    e.y = pos.y;
+    if (pos.x !== undefined) {
+      if (pos.x !== e.x) e.facing = pos.x >= e.x ? 1 : -1;
+      e.x = pos.x;
+      e.y = pos.y;
+    }
     if (pos.done || e.dist >= totalLen) {
       state.lives -= 1;
       state.enemies.splice(i, 1);
@@ -505,7 +537,7 @@ function update(dt) {
               if (e.hp <= 0) {
                 state.gold += e.gold;
                 state.kills += 1;
-                addParticle(e.x, e.y, e.type === "fox" ? "#1a1a1a" : "#A7E6C9", 8, 100);
+                addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
                 state.enemies.splice(j, 1);
                 updateHud();
               }
@@ -553,7 +585,7 @@ function update(dt) {
               if (e.hp <= 0) {
                 state.gold += e.gold;
                 state.kills += 1;
-                addParticle(e.x, e.y, e.type === "fox" ? "#1a1a1a" : "#A7E6C9", 8, 100);
+                addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
                 state.enemies.splice(j, 1);
                 updateHud();
               }
@@ -622,7 +654,7 @@ function update(dt) {
         if (e.hp <= 0) {
           state.gold += e.gold;
           state.kills += 1;
-          addParticle(e.x, e.y, e.type === "fox" ? "#1a1a1a" : "#A7E6C9", 8, 100);
+          addParticle(e.x, e.y, monsterParticleColor(e.type), 8, 100);
           state.enemies.splice(j, 1);
           updateHud();
         }
@@ -937,17 +969,13 @@ function render() {
   for (const t of state.towers) drawTower(t);
 
   for (const e of state.enemies) {
-    if (e.type === "fox") {
-      drawNineTailFox(ctx, e.x, e.y, 0.75, e.anim, e.hurt);
-    } else {
-      drawEyeball(ctx, e.x, e.y, 0.7, e.anim, e.hurt);
-    }
+    drawMonster(ctx, e.type, e.x, e.y, 0.85, e.anim, e.hurt, e.facing || 1);
     if (e.hp < e.maxHp) {
       const ratio = Math.max(0, e.hp / e.maxHp);
       ctx.fillStyle = "rgba(26,26,26,0.25)";
-      ctx.fillRect(e.x - 14, e.y - 34, 28, 4);
+      ctx.fillRect(e.x - 14, e.y - 40, 28, 4);
       ctx.fillStyle = "#c23b3b";
-      ctx.fillRect(e.x - 14, e.y - 34, 28 * ratio, 4);
+      ctx.fillRect(e.x - 14, e.y - 40, 28 * ratio, 4);
     }
   }
 
@@ -994,16 +1022,18 @@ function loop(ts) {
 }
 
 function beginRun() {
-  state = createState();
-  selectedTower = "archer";
-  running = true;
-  els.overlay.classList.add("hidden");
-  els.gameover.classList.add("hidden");
-  layoutWorld();
-  updateHud();
-  lastTs = performance.now();
-  cancelAnimationFrame(raf);
-  raf = requestAnimationFrame(loop);
+  loadMonsters().then(() => {
+    state = createState();
+    selectedTower = "archer";
+    running = true;
+    els.overlay.classList.add("hidden");
+    els.gameover.classList.add("hidden");
+    layoutWorld();
+    updateHud();
+    lastTs = performance.now();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+  });
 }
 
 function hideOtherPanels() {

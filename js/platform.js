@@ -1,17 +1,27 @@
 import {
-  drawNineTailFox,
-  drawEyeball,
   drawHouse,
   drawSprout,
 } from "./draw.js";
 import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js";
 import { showCharSelect } from "./charselect.js";
+import {
+  loadMonsters,
+  makeMonsterStats,
+  drawMonster,
+  monsterParticleColor,
+  unlockedMonsters,
+  getMonsterDef,
+  monsterBodyCenter,
+} from "./monsters.js";
 
 const GRAVITY = 1800;
 const JUMP_V = -620;
+const DOUBLE_JUMP_V = -560;
+const MAX_JUMPS = 2;
 const MOVE_SPEED = 260;
 const FIRE_COOLDOWN = 0.22;
 const ARROW_SPEED = 620;
+const MAX_STAGES = 5;
 
 let canvas, ctx;
 let els = {};
@@ -42,7 +52,7 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function buildLevel() {
+function buildLevel(stage = 1) {
   // 关卡纵向坐标按 ~700 高度设计，镜头会跟随玩家并在小屏上正确裁切
   const platforms = [
     { x: 0, y: 480, w: 380, h: 28 },
@@ -58,30 +68,48 @@ function buildLevel() {
     { x: 2620, y: 300, w: 260, h: 22 },
     { x: 2940, y: 240, w: 200, h: 22 },
     { x: 3200, y: 360, w: 300, h: 28 },
-    // 地面大段
     { x: 0, y: 560, w: 850, h: 40 },
     { x: 1000, y: 580, w: 650, h: 40 },
     { x: 1850, y: 560, w: 850, h: 40 },
     { x: 2900, y: 540, w: 700, h: 40 },
   ];
 
-  const enemies = [
-    enemyAt("fox", 500, 420),
-    enemyAt("eyeball", 920, 300),
-    enemyAt("fox", 1180, 380),
-    enemyAt("fox", 1450, 320),
-    enemyAt("eyeball", 1920, 340),
-    enemyAt("fox", 2180, 280),
-    enemyAt("eyeball", 2440, 220),
-    enemyAt("fox", 2720, 300),
-    enemyAt("eyeball", 3020, 240),
-    enemyAt("fox", 3320, 360),
-    enemyAt("eyeball", 320, 560),
-    enemyAt("fox", 1250, 580),
-    enemyAt("eyeball", 2100, 560),
+  // 保证每种已解锁怪物至少一只，再按关卡多刷
+  const slots = [
+    [500, 420],
+    [920, 300],
+    [1180, 380],
+    [1450, 320],
+    [1920, 340],
+    [2180, 280],
+    [2440, 220],
+    [2720, 300],
+    [3020, 240],
+    [3320, 360],
+    [320, 560],
+    [1250, 580],
+    [2100, 560],
+    [700, 560],
+    [1600, 580],
+    [2500, 560],
+    [3100, 540],
+    [1050, 380],
   ];
+  const pool = unlockedMonsters(stage);
+  const enemies = [];
+  // 先各放一只
+  pool.forEach((type, i) => {
+    const slot = slots[i % slots.length];
+    enemies.push(enemyAt(type, slot[0] + i * 12, slot[1], stage));
+  });
+  // 再按关卡额外填充，覆盖剩余槽位
+  const extra = Math.min(slots.length, 4 + stage * 2);
+  for (let i = pool.length; i < extra; i++) {
+    const type = pool[i % pool.length];
+    const slot = slots[i % slots.length];
+    enemies.push(enemyAt(type, slot[0] + (i % 5) * 18, slot[1], stage));
+  }
 
-  // 平台上的房子与草苗装饰
   const decor = [];
   for (const pl of platforms) {
     if (pl.w < 120) continue;
@@ -114,24 +142,21 @@ function buildLevel() {
     enemies,
     decor,
     goal: { x: 3400, y: 300, w: 40, h: 60 },
+    stage,
   };
 }
 
-function enemyAt(type, x, platformY) {
-  const isFox = type === "fox";
+function enemyAt(type, x, platformY, stage = 1) {
+  // 平台模式略缩小绘制，脚底贴在平台顶面
+  const stats = makeMonsterStats(type, stage, { drawScale: 0.72 });
+  const def = getMonsterDef(type);
   return {
-    type,
+    ...stats,
     x,
-    y: platformY - (isFox ? 28 : 32),
-    vx: isFox ? 70 : 45,
+    y: platformY, // 脚底
+    vx: def.speed * 0.7,
     facing: 1,
-    radius: isFox ? 20 : 24,
-    hp: isFox ? 36 : 55,
-    maxHp: isFox ? 36 : 55,
-    damage: isFox ? 12 : 18,
-    anim: Math.random() * 8,
-    hurt: 0,
-    score: isFox ? 100 : 180,
+    score: 80 + def.xp * 20 + stage * 15,
     patrolMin: x - 70,
     patrolMax: x + 70,
     grounded: true,
@@ -140,12 +165,13 @@ function enemyAt(type, x, platformY) {
 
 let selectedCharId = "archer";
 
-function createState() {
+function createState(stage = 1) {
   const ch = getCharacter(selectedCharId);
   const s = ch.platform;
-  const level = buildLevel();
+  const level = buildLevel(stage);
   return {
     level,
+    stage,
     time: 0,
     kills: 0,
     score: 0,
@@ -164,6 +190,8 @@ function createState() {
       facing: 1,
       anim: 0,
       onGround: false,
+      jumpsLeft: MAX_JUMPS,
+      jumpHeld: false,
       hp: s.maxHp,
       maxHp: s.maxHp,
       invuln: 0,
@@ -185,6 +213,7 @@ function updateHud() {
   els.hpText.textContent = `${Math.ceil(p.hp)}`;
   els.scoreText.textContent = `分数 ${state.score}`;
   els.killText.textContent = `击杀 ${state.kills}`;
+  if (els.stageText) els.stageText.textContent = `关卡 ${state.stage}/${MAX_STAGES}`;
   if (els.ammoText) {
     if (p.attackType === "melee") {
       els.ammoText.textContent = p.weapon === "bolt" ? "盾击" : "近战";
@@ -303,8 +332,9 @@ function fireArrow() {
 
     const doomed = [];
     for (const e of state.level.enemies) {
-      const dx = e.x - p.x;
-      const dy = e.y - p.y;
+      const body = monsterBodyCenter(e);
+      const dx = body.x - p.x;
+      const dy = body.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > range + e.radius) continue;
       // 大致朝向鼠标一侧
@@ -313,7 +343,7 @@ function fireArrow() {
       e.hp -= p.damage;
       e.hurt = 0.2;
       e.x += Math.cos(angle) * (p.charId === "knight" ? 24 : 12);
-      addParticle(e.x, e.y, "#8b3d14");
+      addParticle(body.x, body.y, "#8b3d14");
       if (e.hp <= 0) doomed.push(e);
     }
     for (const e of doomed) {
@@ -321,7 +351,7 @@ function fireArrow() {
       if (j < 0) continue;
       state.score += e.score;
       state.kills += 1;
-      addParticle(e.x, e.y, e.type === "fox" ? "#1a1a1a" : "#A7E6C9");
+      addParticle(e.x, e.y, monsterParticleColor(e.type));
       state.level.enemies.splice(j, 1);
     }
     return;
@@ -344,11 +374,43 @@ function fireArrow() {
 function endGame(won) {
   running = false;
   state.won = won;
-  els.endTitle.textContent = won ? "通关！" : "阵亡";
+  els.endTitle.textContent = won ? "全部通关！" : "阵亡";
   els.resultText.textContent = won
-    ? `分数 ${state.score} · 击杀 ${state.kills} · 用时 ${state.time.toFixed(1)}s`
-    : `分数 ${state.score} · 击杀 ${state.kills}`;
+    ? `关卡 ${state.stage}/${MAX_STAGES} · 分数 ${state.score} · 击杀 ${state.kills} · 用时 ${state.time.toFixed(1)}s`
+    : `关卡 ${state.stage}/${MAX_STAGES} · 分数 ${state.score} · 击杀 ${state.kills}`;
   els.gameover.classList.remove("hidden");
+}
+
+function advanceStage() {
+  if (state.stage >= MAX_STAGES) {
+    endGame(true);
+    return;
+  }
+  const hp = state.player.hp;
+  const score = state.score + 500;
+  const kills = state.kills;
+  const time = state.time;
+  const next = state.stage + 1;
+  const kept = {
+    charId: state.player.charId,
+    attackType: state.player.attackType,
+    weapon: state.player.weapon,
+    meleeRange: state.player.meleeRange,
+    damage: state.player.damage,
+    fireCooldown: state.player.fireCooldown,
+    projectileSpeed: state.player.projectileSpeed,
+    maxHp: state.player.maxHp,
+  };
+  state = createState(next);
+  Object.assign(state.player, kept);
+  state.player.hp = Math.min(kept.maxHp, hp + 20);
+  state.score = score;
+  state.kills = kills;
+  state.time = time;
+  state.projectiles = [];
+  state.meleeFx = [];
+  syncCamera(null, true);
+  updateHud();
 }
 
 function update(dt) {
@@ -363,10 +425,30 @@ function update(dt) {
   if (mx !== 0) p.facing = mx > 0 ? 1 : -1;
 
   const wantJump = keys["Space"] || keys["KeyW"] || keys["ArrowUp"];
-  if (wantJump && p.onGround) {
-    p.vy = JUMP_V;
-    p.onGround = false;
+  if (wantJump && !p.jumpHeld) {
+    if (p.onGround || p.jumpsLeft > 0) {
+      const isDouble = !p.onGround;
+      p.vy = isDouble ? DOUBLE_JUMP_V : JUMP_V;
+      p.onGround = false;
+      p.jumpsLeft = Math.max(0, (isDouble ? p.jumpsLeft : MAX_JUMPS) - 1);
+      if (isDouble) {
+        // 二段跳小火花
+        for (let i = 0; i < 5; i++) {
+          const a = Math.PI + (Math.random() - 0.5) * 1.2;
+          const sp = 60 + Math.random() * 80;
+          state.particles.push({
+            x: p.x,
+            y: p.y + p.h * 0.2,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp,
+            life: 0.25 + Math.random() * 0.15,
+            color: "#1a1a1a",
+          });
+        }
+      }
+    }
   }
+  p.jumpHeld = wantJump;
 
   if (Math.abs(p.vx) > 10 || !p.onGround) p.anim += dt;
   else p.anim += dt * 0.3;
@@ -376,6 +458,7 @@ function update(dt) {
   if (mouse.down) fireArrow();
 
   const fell = resolvePlatforms(p, dt);
+  if (p.onGround) p.jumpsLeft = MAX_JUMPS;
   if (fell === "fell") {
     p.hp -= 25;
     p.invuln = 0.8;
@@ -383,6 +466,8 @@ function update(dt) {
     p.y = 440;
     p.vx = 0;
     p.vy = 0;
+    p.jumpsLeft = MAX_JUMPS;
+    p.jumpHeld = false;
     addParticle(p.x, p.y, "#c23b3b");
     if (p.hp <= 0) {
       p.hp = 0;
@@ -406,9 +491,7 @@ function update(dt) {
       g.h
     )
   ) {
-    state.score += 500;
-    updateHud();
-    endGame(true);
+    advanceStage();
     return;
   }
 
@@ -436,8 +519,9 @@ function update(dt) {
     for (let j = state.level.enemies.length - 1; j >= 0; j--) {
       const e = state.level.enemies[j];
       if (pr.hit.has(e)) continue;
-      const dx = e.x - pr.x;
-      const dy = e.y - pr.y;
+      const body = monsterBodyCenter(e);
+      const dx = body.x - pr.x;
+      const dy = body.y - pr.y;
       if (dx * dx + dy * dy < (e.radius + 5) ** 2) {
         pr.hit.add(e);
         e.hp -= pr.damage;
@@ -447,7 +531,7 @@ function update(dt) {
         if (e.hp <= 0) {
           state.score += e.score;
           state.kills += 1;
-          addParticle(e.x, e.y, e.type === "fox" ? "#1a1a1a" : "#A7E6C9");
+          addParticle(body.x, body.y, monsterParticleColor(e.type));
           state.level.enemies.splice(j, 1);
         }
         break;
@@ -472,15 +556,16 @@ function update(dt) {
     }
 
     // 简单追击：玩家靠近时加速
-    const dx = p.x - e.x;
-    const dy = p.y - e.y;
+    const body = monsterBodyCenter(e);
+    const dx = p.x - body.x;
+    const dy = p.y - body.y;
     const dist = Math.hypot(dx, dy);
-    if (dist < 220 && Math.abs(dy) < 80) {
-      e.vx = Math.sign(dx) * (e.type === "fox" ? 110 : 80);
+    if (dist < 220 && Math.abs(dy) < 100) {
+      e.vx = Math.sign(dx) * (e.speed * 1.35 || 90);
       e.facing = Math.sign(dx) || e.facing;
     }
 
-    if (dist < e.radius + 16 && p.invuln <= 0) {
+    if (dist < e.radius + 18 && p.invuln <= 0) {
       p.hp -= e.damage;
       p.invuln = 0.7;
       p.vx = Math.sign(p.x - e.x) * 220;
@@ -621,17 +706,15 @@ function render() {
   }
 
   for (const e of state.level.enemies) {
-    if (e.type === "fox") {
-      drawNineTailFox(ctx, sx(e.x), sy(e.y), 0.9, e.anim, e.hurt);
-    } else {
-      drawEyeball(ctx, sx(e.x), sy(e.y), 0.85, e.anim, e.hurt);
-    }
+    const ds = e.drawScale || 0.72;
+    drawMonster(ctx, e.type, sx(e.x), sy(e.y), ds, e.anim, e.hurt, e.facing, "feet");
     if (e.hp < e.maxHp) {
       const ratio = e.hp / e.maxHp;
+      const top = sy(e.y) - (e.drawH || 40) - 8;
       ctx.fillStyle = "rgba(26,26,26,0.25)";
-      ctx.fillRect(sx(e.x) - 16, sy(e.y) - 40, 32, 4);
+      ctx.fillRect(sx(e.x) - 16, top, 32, 4);
       ctx.fillStyle = "#c23b3b";
-      ctx.fillRect(sx(e.x) - 16, sy(e.y) - 40, 32 * ratio, 4);
+      ctx.fillRect(sx(e.x) - 16, top, 32 * ratio, 4);
     }
   }
 
@@ -689,16 +772,18 @@ function loop(ts) {
 
 function beginRun(charId) {
   if (charId) selectedCharId = charId;
-  state = createState();
-  running = true;
-  els.overlay.classList.add("hidden");
-  els.charSelect?.classList.add("hidden");
-  els.gameover.classList.add("hidden");
-  syncCamera(null, true);
-  updateHud();
-  lastTs = performance.now();
-  cancelAnimationFrame(raf);
-  raf = requestAnimationFrame(loop);
+  loadMonsters().then(() => {
+    state = createState(1);
+    running = true;
+    els.overlay.classList.add("hidden");
+    els.charSelect?.classList.add("hidden");
+    els.gameover.classList.add("hidden");
+    syncCamera(null, true);
+    updateHud();
+    lastTs = performance.now();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+  });
 }
 
 function openCharSelect() {
@@ -706,7 +791,7 @@ function openCharSelect() {
   cancelAnimationFrame(raf);
   els.overlay.classList.add("hidden");
   els.gameover.classList.add("hidden");
-  showCharSelect(els.charSelect, els.charGrid, "跳跃模式 · 选择角色", (id) => {
+  showCharSelect(els.charSelect, els.charGrid, "平台模式 · 选择角色", (id) => {
     beginRun(id);
   });
 }

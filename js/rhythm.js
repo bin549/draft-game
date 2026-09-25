@@ -90,7 +90,7 @@ function createPlayState(level) {
       beat: 2 + i * 2, // 从第 2 拍开始
       hit: false,
       judged: false,
-      result: null, // perfect | good | miss
+      result: null, // perfect | miss
     });
   }
   return {
@@ -104,7 +104,6 @@ function createPlayState(level) {
     combo: 0,
     maxCombo: 0,
     perfect: 0,
-    good: 0,
     miss: 0,
     hp: 100,
     feedback: "",
@@ -112,17 +111,15 @@ function createPlayState(level) {
     bubble: null, // { text, life }
     anim: 0,
     // per-level visual
-    motherStab: 0,
     sonDodge: 0,
     sonHit: 0,
-    tattoos: 0,
     jump: 0,
     hurdles: [],
     chopSwing: 0,
-    headIn: true,
-    headPull: 0,
+    headPullAmt: 0,
     aimPulse: 0,
     arrows: [],
+    targetHits: [],
     targets: [0, 1],
     activeTarget: 0,
     done: false,
@@ -183,15 +180,15 @@ function drawLevelPreview(g, id, w, h) {
   g.lineWidth = 2;
   g.lineCap = "round";
   if (id === "tattoo") {
-    drawMom(g, w * 0.28, h * 0.7, 0.7, 0);
-    drawSonKneel(g, w * 0.68, h * 0.72, 0.7, 0, 2);
+    drawMom(g, w * 0.38, h * 0.72, 0.75, 0.55);
+    drawSonKneel(g, w * 0.58, h * 0.74, 0.75, 0);
   } else if (id === "hurdle") {
     drawHurdles(g, 10, h * 0.72, w - 20, 0);
     drawRunner(g, w * 0.45, h * 0.55, 0.85, 0.5);
   } else if (id === "chop") {
-    drawBlock(g, w * 0.35, h * 0.72, 0.8);
-    drawVictimHead(g, w * 0.35, h * 0.55, 0.8, 0);
-    drawExecutioner(g, w * 0.72, h * 0.62, 0.75, 0.4);
+    drawBlock(g, w * 0.4, h * 0.74, 0.75);
+    drawVictimHead(g, w * 0.4, h * 0.58, 0.75, 0);
+    drawExecutioner(g, w * 0.62, h * 0.64, 0.72, 0.55);
   } else {
     drawArcherFG(g, w * 0.3, h * 0.78, 0.7, 0);
     drawTarget(g, w * 0.72, h * 0.35, 0.55, true);
@@ -230,7 +227,16 @@ function updateHud() {
 function judgeInput() {
   if (mode !== "play" || !state || state.done) return;
   const beatTime = state.time / BEAT;
-  // 找最近未判定 cue
+  const id = state.level.id;
+
+  // 各关：按下立刻给动作反馈（判定另算）
+  if (id === "hurdle") state.jump = 0.45;
+  else if (id === "tattoo") state.sonDodge = 0.4;
+  else if (id === "chop") state.headPullAmt = 1;
+  else if (id === "shoot") fireShotVisual();
+
+  // 找最近未判定 cue — 仅 Perfect / Miss
+  const HIT = 0.22;
   let best = null;
   let bestAbs = 999;
   for (const c of state.cues) {
@@ -241,59 +247,81 @@ function judgeInput() {
       best = c;
     }
   }
-  if (!best || bestAbs > 0.45) {
-    // 空按
-    flashFeedback("太早/太晚", "#c45c26");
-    beep(180, 0.05, "sawtooth", 0.03);
-    return;
-  }
+  // 窗口外按下：不结算（等过点自动 Miss），也不显示 Good/太早
+  if (!best || bestAbs > HIT) return;
 
   best.judged = true;
   best.hit = true;
-  if (bestAbs <= 0.12) {
-    best.result = "perfect";
-    state.perfect += 1;
-    state.score += 300;
-    state.combo += 1;
-    flashFeedback("Perfect!", "#3a8f6e");
-    beep(880, 0.05);
-    applySuccessAction();
-  } else {
-    best.result = "good";
-    state.good += 1;
-    state.score += 150;
-    state.combo += 1;
-    flashFeedback("Good", "#c45c26");
-    beep(660, 0.05);
-    applySuccessAction();
-  }
+  best.result = "perfect";
+  state.perfect += 1;
+  state.score += 300;
+  state.combo += 1;
   state.maxCombo = Math.max(state.maxCombo, state.combo);
+  flashFeedback("Perfect!", "#3a8f6e");
+  beep(880, 0.05);
+  applySuccessAction(best);
   updateHud();
 }
 
-function applySuccessAction() {
+/** 拍点连续动作：靠近蓄力 → 越过续势，不会瞬间切到下一拍 */
+function cueMotion(beat, cueBeat, wind = 0.55, follow = 0.45) {
+  const d = cueBeat - beat;
+  if (d >= wind) return 0;
+  if (d > 0) return 1 - d / wind;
+  if (d > -follow * 0.35) return 1;
+  if (d > -follow) return 1 - (-d - follow * 0.35) / (follow * 0.65);
+  return 0;
+}
+
+function maxCueMotion(beat, cues, wind, follow) {
+  let m = 0;
+  for (const c of cues) m = Math.max(m, cueMotion(beat, c.beat, wind, follow));
+  return m;
+}
+
+function fireShotVisual(cue) {
+  const idx = cue
+    ? state.cues.indexOf(cue)
+    : Math.max(
+        0,
+        state.cues.findIndex((c) => !c.judged && c.beat >= state.beat - 0.2)
+      );
+  const target = ((idx >= 0 ? idx : state.activeTarget) % 2 + 2) % 2;
+  state.activeTarget = target;
+  state.aimPulse = 0.35;
+  state.arrows.push({
+    x: 0.28,
+    y: 0.78,
+    tx: target === 0 ? 0.62 : 0.78,
+    ty: target === 0 ? 0.28 : 0.36,
+    life: 0.55,
+    maxLife: 0.55,
+    hit: false,
+  });
+}
+
+function applySuccessAction(cue) {
   const id = state.level.id;
   if (id === "tattoo") {
-    state.sonDodge = 0.35;
-    state.motherStab = 0.25;
+    state.sonDodge = 0.45;
   } else if (id === "hurdle") {
     state.jump = 0.45;
+    if (cue) {
+      const h = state.hurdles.find((x) => x.beat === cue.beat);
+      if (h) h.passed = true;
+    }
   } else if (id === "chop") {
-    state.headPull = 0.4;
-    state.headIn = false;
-    setTimeout(() => {
-      if (state) state.headIn = true;
-    }, 280);
+    state.headPullAmt = 1;
   } else if (id === "shoot") {
-    state.aimPulse = 0.3;
-    state.arrows.push({
-      x: 0.28,
-      y: 0.78,
-      tx: 0.72,
-      ty: 0.32 + state.activeTarget * 0.08,
-      life: 0.35,
+    // 箭已在按下时发出；成功则在靶上留命中涟漪
+    const target = state.cues.indexOf(cue) % 2;
+    state.targetHits.push({
+      target,
+      life: 0.55,
+      maxLife: 0.55,
     });
-    state.activeTarget = 1 - state.activeTarget;
+    const last = state.arrows[state.arrows.length - 1];
+    if (last) last.hit = true;
   }
 }
 
@@ -308,14 +336,15 @@ function missCue(c) {
   const id = state.level.id;
   if (id === "tattoo") {
     state.sonHit = 0.8;
-    state.motherStab = 0.35;
-    state.tattoos = Math.min(4, state.tattoos + 1);
     state.bubble = { text: "妈妈你好狠!!!", life: 1.4 };
   } else if (id === "hurdle") {
-    state.jump = 0; // 绊倒感
+    const h = state.hurdles.find((x) => x.beat === c.beat);
+    if (h) {
+      h.passed = true;
+      h.tripped = true;
+    }
     state.bubble = { text: "哎呦!", life: 0.8 };
   } else if (id === "chop") {
-    state.chopSwing = 0.4;
     state.bubble = { text: "咔！", life: 0.7 };
   } else if (id === "shoot") {
     state.bubble = { text: "脱靶…", life: 0.7 };
@@ -337,13 +366,13 @@ function endLevel(cleared) {
   state.done = true;
   mode = "result";
   const rank =
-    state.miss === 0 && state.perfect >= state.good
+    state.miss === 0
       ? "Superb"
       : state.hp > 40
         ? "OK"
         : "Try Again";
   els.endTitle.textContent = cleared || state.hp > 0 ? `${rank}！` : "失败";
-  els.resultText.textContent = `${state.level.name} · 分数 ${state.score} · Perfect ${state.perfect} · Good ${state.good} · Miss ${state.miss} · 最高连击 ${state.maxCombo}`;
+  els.resultText.textContent = `${state.level.name} · 分数 ${state.score} · Perfect ${state.perfect} · Miss ${state.miss} · 最高连击 ${state.maxCombo}`;
   els.result.classList.remove("hidden");
   beep(cleared || state.hp > 0 ? 520 : 200, 0.15);
 }
@@ -359,13 +388,20 @@ function update(dt) {
     state.bubble.life -= dt;
     if (state.bubble.life <= 0) state.bubble = null;
   }
-  if (state.motherStab > 0) state.motherStab -= dt;
   if (state.sonDodge > 0) state.sonDodge -= dt;
   if (state.sonHit > 0) state.sonHit -= dt;
   if (state.jump > 0) state.jump -= dt;
   if (state.chopSwing > 0) state.chopSwing -= dt;
-  if (state.headPull > 0) state.headPull -= dt;
+  // 缩头平滑回弹，不瞬切
+  if (state.headPullAmt > 0) {
+    state.headPullAmt = Math.max(0, state.headPullAmt - dt * 1.6);
+  }
   if (state.aimPulse > 0) state.aimPulse -= dt;
+
+  for (let i = state.targetHits.length - 1; i >= 0; i--) {
+    state.targetHits[i].life -= dt;
+    if (state.targetHits[i].life <= 0) state.targetHits.splice(i, 1);
+  }
 
   // 节拍闪烁音
   const b = Math.floor(state.beat);
@@ -376,7 +412,7 @@ function update(dt) {
 
   // 错过窗口
   for (const c of state.cues) {
-    if (!c.judged && state.beat > c.beat + 0.45) missCue(c);
+    if (!c.judged && state.beat > c.beat + 0.22) missCue(c);
   }
 
   for (let i = state.arrows.length - 1; i >= 0; i--) {
@@ -430,9 +466,11 @@ function drawMom(ctx, x, y, s, stab) {
   ctx.restore();
 }
 
-function drawSonKneel(ctx, x, y, s, dodge, tattoos) {
+function drawSonKneel(ctx, x, y, s, dodge) {
+  // 闪避过程：先快速躲开再缓缓回来（dodge 从峰值降到 0）
+  const slide = dodge > 0.2 ? 1 : dodge > 0 ? dodge / 0.2 : 0;
   ctx.save();
-  ctx.translate(x + (dodge > 0 ? 16 : 0), y + (dodge > 0 ? -6 : 0));
+  ctx.translate(x + slide * 18, y - slide * 8);
   ctx.scale(s, s);
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2.2;
@@ -452,14 +490,6 @@ function drawSonKneel(ctx, x, y, s, dodge, tattoos) {
   ctx.moveTo(-6, -21);
   ctx.lineTo(-18, 6);
   ctx.stroke();
-  // 背上文字
-  const chars = ["精", "忠", "报", "国"];
-  ctx.font = "bold 11px Songti SC, serif";
-  ctx.fillStyle = "#1a1a1a";
-  ctx.textAlign = "center";
-  for (let i = 0; i < Math.min(tattoos, 4); i++) {
-    ctx.fillText(chars[i], 6, -18 + i * 12);
-  }
   ctx.restore();
 }
 
@@ -532,23 +562,53 @@ function drawRunner(ctx, x, y, s, jumpT) {
 function drawHurdles(ctx, x, y, w, scroll) {
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2;
-  const n = 8;
+  const spacing = w / 7;
+  const offset = ((scroll % 1) + 1) % 1;
   ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const hx = x + (i / (n - 1)) * w;
-    const hy = y - Math.sin((i / (n - 1)) * Math.PI) * 12;
+  for (let i = -1; i < 9; i++) {
+    const hx = x + (i + 1 - offset) * spacing;
+    if (hx < x - 10 || hx > x + w + 10) continue;
+    const t = (hx - x) / w;
+    const hy = y - Math.sin(Math.max(0, Math.min(1, t)) * Math.PI) * 12;
     ctx.moveTo(hx, hy);
     ctx.lineTo(hx, hy + 28);
   }
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x, y);
-  for (let i = 0; i < n; i++) {
-    const hx = x + (i / (n - 1)) * w;
-    const hy = y - Math.sin((i / (n - 1)) * Math.PI) * 12;
-    ctx.lineTo(hx, hy);
+  let started = false;
+  for (let i = -1; i < 9; i++) {
+    const hx = x + (i + 1 - offset) * spacing;
+    if (hx < x - 10 || hx > x + w + 10) continue;
+    const t = (hx - x) / w;
+    const hy = y - Math.sin(Math.max(0, Math.min(1, t)) * Math.PI) * 12;
+    if (!started) {
+      ctx.moveTo(hx, hy);
+      started = true;
+    } else ctx.lineTo(hx, hy);
   }
   ctx.stroke();
+}
+
+function drawOneHurdle(ctx, hx, y, tripped = false) {
+  ctx.save();
+  ctx.strokeStyle = tripped ? "#c23b3b" : "#1a1a1a";
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(hx, y - 30);
+  ctx.lineTo(hx, y + 30);
+  ctx.moveTo(hx - 20, y - 22);
+  ctx.lineTo(hx + 20, y - 22);
+  ctx.moveTo(hx - 16, y - 8);
+  ctx.lineTo(hx + 16, y - 8);
+  ctx.stroke();
+  // 底座
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(hx - 10, y + 30);
+  ctx.lineTo(hx + 10, y + 30);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawExecutioner(ctx, x, y, s, swing) {
@@ -730,82 +790,99 @@ function renderPlay() {
   ctx.fillText(state.level.hint, cx, 72);
 
   if (id === "tattoo") {
-    // 妈妈喊话
-    if (state.motherStab <= 0 && Math.floor(state.beat) % 4 === 0) {
-      drawBubble(ctx, cx - 140, cy - 120, "快点趴下!");
+    // 妈妈刺字：按 2 拍循环，与玩家判定无关
+    const phase = ((state.beat % 2) + 2) % 2; // 0..2
+    let stab = 0;
+    if (phase < 1.1) stab = phase / 1.1; // 蓄力
+    else if (phase < 1.35) stab = 1; // 刺下
+    else stab = Math.max(0, 1 - (phase - 1.35) / 0.65); // 收回
+    if (phase > 0.35 && phase < 1.05) {
+      drawBubble(ctx, cx - 70, cy - 100, "快点趴下!");
     }
-    drawMom(ctx, cx - 120, cy + 40, 1.35, Math.max(0, state.motherStab) * 3);
-    drawSonKneel(
-      ctx,
-      cx + 90,
-      cy + 50,
-      1.35,
-      state.sonDodge,
-      state.tattoos
-    );
+    drawMom(ctx, cx - 55, cy + 40, 1.35, stab * 1.1);
+    // 交互只动儿子
+    const dodgeT = Math.max(0, state.sonDodge);
+    const hitShake = state.sonHit > 0 ? Math.sin(state.sonHit * 40) * 4 : 0;
+    drawSonKneel(ctx, cx + 45 + hitShake, cy + 50, 1.35, dodgeT);
   } else if (id === "hurdle") {
-    // 滚动栏杆
-    const scroll = (state.beat % 8) / 8;
-    ctx.save();
-    drawHurdles(ctx, 40, cy + 40, w - 80, scroll);
-    // 近处大栏
-    const next = state.cues.find((c) => !c.judged);
-    if (next) {
-      const dist = next.beat - state.beat;
-      const hx = cx + dist * 160;
-      ctx.strokeStyle = "#1a1a1a";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(hx, cy + 10);
-      ctx.lineTo(hx, cy + 70);
-      ctx.moveTo(hx - 18, cy + 18);
-      ctx.lineTo(hx + 18, cy + 18);
-      ctx.stroke();
+    // 地面持续向左滚动（不因判定重置）
+    const scroll = state.beat * 0.35;
+    drawHurdles(ctx, 40, cy + 50, w - 80, scroll);
+
+    // 每根栏杆按自己的拍点连续移动：越过玩家后继续向左滑出
+    const runnerX = cx - 40;
+    const speed = 170;
+    for (const h of state.hurdles) {
+      const dist = h.beat - state.beat;
+      const hx = runnerX + dist * speed;
+      if (hx < -40 || hx > w + 40) continue;
+      drawOneHurdle(ctx, hx, cy + 40, !!h.tripped);
     }
-    ctx.restore();
-    drawRunner(ctx, cx - 40, cy + 20, 1.4, state.jump);
+    drawRunner(ctx, runnerX, cy + 20, 1.4, state.jump);
   } else if (id === "chop") {
-    drawBlock(ctx, cx - 40, cy + 60, 1.5);
-    drawVictimHead(ctx, cx - 40, cy + 10, 1.4, state.headPull > 0 ? 1 : 0);
-    const swing =
-      state.chopSwing > 0
-        ? 1 - state.chopSwing / 0.4
-        : (() => {
-            const next = state.cues.find((c) => !c.judged);
-            if (!next) return 0;
-            const d = next.beat - state.beat;
-            return d < 0.5 && d > 0 ? 1 - d / 0.5 : 0;
-          })();
-    drawExecutioner(ctx, cx + 130, cy + 20, 1.4, swing);
-    ctx.fillStyle = "rgba(26,26,26,0.45)";
-    ctx.font = "13px Songti SC, serif";
-    ctx.fillText("一个刽子手", cx + 130, cy + 110);
+    drawBlock(ctx, cx - 35, cy + 60, 1.5);
+    // 交互只控制缩头
+    drawVictimHead(ctx, cx - 35, cy + 10, 1.4, state.headPullAmt);
+    // 刽子手按 2 拍循环挥刀，与判定无关
+    const phase = ((state.beat % 2) + 2) % 2;
+    let swing = 0;
+    if (phase < 1.15) swing = phase / 1.15;
+    else if (phase < 1.4) swing = 1;
+    else swing = Math.max(0, 1 - (phase - 1.4) / 0.6);
+    drawExecutioner(ctx, cx + 55, cy + 25, 1.4, swing);
   } else if (id === "shoot") {
-    // 透视分界
     ctx.strokeStyle = "rgba(26,26,26,0.25)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(40, h * 0.42);
     ctx.lineTo(w - 40, h * 0.7);
     ctx.stroke();
-    const lit = state.cues.some((c) => !c.judged && Math.abs(c.beat - state.beat) < 0.35);
-    drawTarget(ctx, w * 0.62, h * 0.28, 1.1, lit && state.activeTarget === 0);
-    drawTarget(ctx, w * 0.78, h * 0.36, 0.95, lit && state.activeTarget === 1);
-    // NPC
+
+    // 两靶各自按对应拍点连续亮起/熄灭
+    const lit0 = state.cues.some((c, i) => i % 2 === 0 && cueMotion(state.beat, c.beat, 0.4, 0.25) > 0.35);
+    const lit1 = state.cues.some((c, i) => i % 2 === 1 && cueMotion(state.beat, c.beat, 0.4, 0.25) > 0.35);
+    drawTarget(ctx, w * 0.62, h * 0.28, 1.1, lit0);
+    drawTarget(ctx, w * 0.78, h * 0.36, 0.95, lit1);
+
+    // 命中涟漪（不打断下一拍）
+    for (const hit of state.targetHits) {
+      const fade = hit.life / hit.maxLife;
+      const tx = hit.target === 0 ? w * 0.62 : w * 0.78;
+      const ty = hit.target === 0 ? h * 0.28 : h * 0.36;
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = "#3a8f6e";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 18 + (1 - fade) * 28, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
     ctx.strokeStyle = "#1a1a1a";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(w * 0.48, h * 0.3, 6, 0, Math.PI * 2);
     ctx.stroke();
-    drawArcherFG(ctx, w * 0.28, h * 0.78, 1.5, state.aimPulse > 0 ? 1 : 0.4);
+    const drawAmt = state.aimPulse > 0 ? Math.min(1, state.aimPulse * 3) : 0.35;
+    drawArcherFG(ctx, w * 0.28, h * 0.78, 1.5, drawAmt);
     for (const a of state.arrows) {
-      const t = 1 - a.life / 0.35;
-      const ax = w * (a.x + (a.tx - a.x) * t);
-      const ay = h * (a.y + (a.ty - a.y) * t);
+      const t = 1 - a.life / (a.maxLife || 0.55);
+      const fly = Math.min(1, t / 0.7);
+      const ax = w * (a.x + (a.tx - a.x) * fly);
+      const ay = h * (a.y + (a.ty - a.y) * fly);
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 2.2;
       ctx.beginPath();
-      ctx.moveTo(ax - 10, ay);
-      ctx.lineTo(ax + 10, ay - 4);
+      ctx.moveTo(ax - 12, ay + 2);
+      ctx.lineTo(ax + 12, ay - 4);
       ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(ax + 12, ay - 4);
+      ctx.lineTo(ax + 6, ay - 8);
+      ctx.lineTo(ax + 7, ay);
+      ctx.closePath();
+      ctx.fillStyle = "#1a1a1a";
+      ctx.fill();
     }
   }
 

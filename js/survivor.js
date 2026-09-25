@@ -1,6 +1,4 @@
 import {
-  drawNineTailFox,
-  drawEyeball,
   drawXpOrb,
   drawGround,
   drawHouse,
@@ -9,8 +7,17 @@ import {
 } from "./draw.js";
 import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js";
 import { showCharSelect } from "./charselect.js";
+import {
+  loadMonsters,
+  drawMonster,
+  makeMonsterStats,
+  createSpawnRotator,
+  monsterParticleColor,
+  unlockedMonsters,
+} from "./monsters.js";
 
 const WORLD = { w: 3200, h: 3200 };
+const STAGE_DURATION = 48; // 秒 / 关
 
 const UPGRADES = [
   {
@@ -172,8 +179,11 @@ function createState() {
   return {
     time: 0,
     kills: 0,
+    stage: 1,
+    stageTimer: STAGE_DURATION,
     spawnTimer: 0,
-    spawnInterval: 1.1,
+    spawnInterval: 1.15,
+    spawnRotator: createSpawnRotator(1),
     camera: { x: 0, y: 0 },
     props: buildProps(),
     tornados: [],
@@ -226,6 +236,11 @@ function updateHud() {
   els.levelText.textContent = `Lv.${p.level}`;
   els.timeText.textContent = formatTime(state.time);
   els.killText.textContent = `击杀 ${state.kills}`;
+  if (els.stageText) els.stageText.textContent = `关卡 ${state.stage}`;
+}
+
+function currentStage() {
+  return Math.max(1, 1 + Math.floor(state.time / STAGE_DURATION));
 }
 
 function spawnEnemy() {
@@ -234,39 +249,13 @@ function spawnEnemy() {
   const dist = 420 + Math.random() * 180;
   const x = Math.max(40, Math.min(WORLD.w - 40, p.x + Math.cos(angle) * dist));
   const y = Math.max(40, Math.min(WORLD.h - 40, p.y + Math.sin(angle) * dist));
-  const minute = state.time / 60;
-  const foxChance = Math.min(0.55, 0.25 + minute * 0.08);
-  const type = Math.random() < foxChance ? "fox" : "eyeball";
-
-  if (type === "fox") {
-    state.enemies.push({
-      type: "fox",
-      x,
-      y,
-      radius: 22,
-      hp: 28 + minute * 18,
-      maxHp: 28 + minute * 18,
-      speed: 55 + minute * 8,
-      damage: 10 + minute * 2,
-      anim: Math.random() * 10,
-      hurt: 0,
-      xp: 3,
-    });
-  } else {
-    state.enemies.push({
-      type: "eyeball",
-      x,
-      y,
-      radius: 26,
-      hp: 45 + minute * 28,
-      maxHp: 45 + minute * 28,
-      speed: 38 + minute * 5,
-      damage: 16 + minute * 3,
-      anim: Math.random() * 10,
-      hurt: 0,
-      xp: 6,
-    });
-  }
+  const type = state.spawnRotator.next();
+  const stats = makeMonsterStats(type, state.stage);
+  state.enemies.push({
+    ...stats,
+    x,
+    y,
+  });
 }
 
 function paintMagicCard() {
@@ -512,7 +501,7 @@ function gainXp(amount) {
 
 function killEnemy(e, idx) {
   dropOrb(e.x, e.y, e.xp);
-  addParticle(e.x, e.y, e.type === "fox" ? "#1a1a1a" : "#A7E6C9");
+  addParticle(e.x, e.y, monsterParticleColor(e.type));
   state.enemies.splice(idx, 1);
   state.kills += 1;
 }
@@ -520,13 +509,34 @@ function killEnemy(e, idx) {
 function endGame() {
   running = false;
   paused = false;
-  els.resultText.textContent = `存活 ${formatTime(state.time)} · 击杀 ${state.kills} · 等级 ${state.player.level}`;
+  els.resultText.textContent = `存活 ${formatTime(state.time)} · 关卡 ${state.stage} · 击杀 ${state.kills} · 等级 ${state.player.level}`;
   els.gameover.classList.remove("hidden");
 }
 
 function update(dt) {
   const p = state.player;
   state.time += dt;
+
+  // 关卡推进：解锁新怪 + 加快刷怪
+  const nextStage = currentStage();
+  if (nextStage !== state.stage) {
+    state.stage = nextStage;
+    state.spawnRotator.setStage(state.stage);
+    state.spawnInterval = Math.max(0.35, 1.15 - (state.stage - 1) * 0.1);
+    // 每升一关保证立刻刷出所有已解锁类型各一只
+    for (const id of unlockedMonsters(state.stage)) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 380 + Math.random() * 120;
+      const stats = makeMonsterStats(id, state.stage);
+      state.enemies.push({
+        ...stats,
+        x: Math.max(40, Math.min(WORLD.w - 40, p.x + Math.cos(angle) * dist)),
+        y: Math.max(40, Math.min(WORLD.h - 40, p.y + Math.sin(angle) * dist)),
+        facing: 1,
+      });
+    }
+    updateHud();
+  }
 
   let mx = 0;
   let my = 0;
@@ -658,6 +668,7 @@ function update(dt) {
     const dx = p.x - e.x;
     const dy = p.y - e.y;
     const dist = Math.hypot(dx, dy) || 1;
+    e.facing = dx >= 0 ? 1 : -1;
     e.x += (dx / dist) * e.speed * dt;
     e.y += (dy / dist) * e.speed * dt;
 
@@ -774,14 +785,14 @@ function render() {
       drawCharacter(ctx, p.charId || "archer", sx(p.x), sy(p.y), p.facing, p.anim);
     } else {
       const e = d.e;
-      if (e.type === "fox") drawNineTailFox(ctx, sx(e.x), sy(e.y), 1, e.anim, e.hurt);
-      else drawEyeball(ctx, sx(e.x), sy(e.y), 0.95, e.anim, e.hurt);
+      const facing = e.facing ?? (e.x < state.player.x ? 1 : -1);
+      drawMonster(ctx, e.type, sx(e.x), sy(e.y), 1, e.anim, e.hurt, facing);
       if (e.hp < e.maxHp) {
         const ratio = e.hp / e.maxHp;
         ctx.fillStyle = "rgba(26,26,26,0.25)";
-        ctx.fillRect(sx(e.x) - 16, sy(e.y) - 38, 32, 4);
+        ctx.fillRect(sx(e.x) - 16, sy(e.y) - 48, 32, 4);
         ctx.fillStyle = "#c23b3b";
-        ctx.fillRect(sx(e.x) - 16, sy(e.y) - 38, 32 * ratio, 4);
+        ctx.fillRect(sx(e.x) - 16, sy(e.y) - 48, 32 * ratio, 4);
       }
     }
   }
@@ -832,20 +843,22 @@ function loop(ts) {
 
 function beginRun(charId) {
   if (charId) selectedCharId = charId;
-  state = createState();
-  running = true;
-  paused = false;
-  els.overlay.classList.add("hidden");
-  els.charSelect?.classList.add("hidden");
-  els.gameover.classList.add("hidden");
-  els.levelup.classList.add("hidden");
-  els.magicDock?.classList.remove("hidden");
-  updateHud();
-  updateMagicUi();
-  paintMagicCard();
-  lastTs = performance.now();
-  cancelAnimationFrame(raf);
-  raf = requestAnimationFrame(loop);
+  loadMonsters().then(() => {
+    state = createState();
+    running = true;
+    paused = false;
+    els.overlay.classList.add("hidden");
+    els.charSelect?.classList.add("hidden");
+    els.gameover.classList.add("hidden");
+    els.levelup.classList.add("hidden");
+    els.magicDock?.classList.remove("hidden");
+    updateHud();
+    updateMagicUi();
+    paintMagicCard();
+    lastTs = performance.now();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+  });
 }
 
 function openCharSelect() {
@@ -856,7 +869,7 @@ function openCharSelect() {
   els.gameover.classList.add("hidden");
   els.levelup.classList.add("hidden");
   els.magicDock?.classList.add("hidden");
-  showCharSelect(els.charSelect, els.charGrid, "幸存模式 · 选择角色", (id) => {
+  showCharSelect(els.charSelect, els.charGrid, "生存模式 · 选择角色", (id) => {
     beginRun(id);
   });
 }

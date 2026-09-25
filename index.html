@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AI编程演示Demo</title>
+  <title>吃点好的</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -12,14 +12,14 @@
     <div class="menu-bg" aria-hidden="true"></div>
     <div class="menu-content">
       <header class="menu-header">
-        <h1>AI编程演示Demo</h1>
+        <h1>吃点好的</h1>
       </header>
       <div class="game-grid" id="game-grid">
         <button class="game-card" data-mode="survivor" type="button">
           <div class="card-preview" id="preview-survivor"></div>
           <div class="card-body">
             <div class="card-meta"><span class="mode-num">01</span><span class="tag">生存</span></div>
-            <h2>幸存模式</h2>
+            <h2>生存模式</h2>
             <p>选角开局 · 近战/远程分流 · 龙卷风魔法</p>
             <p class="controls">点击进入 · 选角后开始</p>
           </div>
@@ -27,8 +27,8 @@
         <button class="game-card" data-mode="platform" type="button">
           <div class="card-preview" id="preview-platform"></div>
           <div class="card-body">
-            <div class="card-meta"><span class="mode-num">02</span><span class="tag shoot">跳跃</span></div>
-            <h2>跳跃模式</h2>
+            <div class="card-meta"><span class="mode-num">02</span><span class="tag shoot">平台</span></div>
+            <h2>平台模式</h2>
             <p>选角开局 · 近战贴身 / 远程射击</p>
             <p class="controls">点击进入 · 选角后开始</p>
           </div>
@@ -72,22 +72,11 @@
         <span id="level-text">Lv.1</span>
       </div>
       <div class="stat time">
+        <span id="surv-stage-text">关卡 1</span>
         <span id="time-text">00:00</span>
         <span id="kill-text">击杀 0</span>
       </div>
       <button type="button" class="btn-back" data-back>返回菜单</button>
-    </div>
-
-    <!-- 幸存模式魔法卡片 -->
-    <div id="survivor-magic-dock" class="magic-dock hidden">
-      <button type="button" id="btn-magic-tornado" class="magic-card">
-        <div class="magic-card-preview" id="magic-preview-tornado"></div>
-        <div class="magic-card-meta">
-          <span class="magic-card-name">龙卷风</span>
-          <span class="magic-card-desc">全屏伤害</span>
-          <span class="magic-card-cd" id="magic-tornado-cd">就绪 · Q</span>
-        </div>
-      </button>
     </div>
 
     <!-- 平台射击 HUD -->
@@ -102,6 +91,7 @@
         <span id="ammo-text">∞</span>
       </div>
       <div class="stat time">
+        <span id="plat-stage-text">关卡 1</span>
         <span id="plat-score-text">分数 0</span>
         <span id="plat-kill-text">击杀 0</span>
       </div>
@@ -139,42 +129,6 @@
       <button type="button" class="btn-back" data-back>返回菜单</button>
     </div>
 
-    <!-- 塔防底部角色卡片 -->
-    <div id="tower-dock" class="tower-dock hidden">
-      <button type="button" class="tower-card" data-tower="swordsman" id="btn-tower-swordsman">
-        <div class="tower-card-preview" id="tower-preview-swordsman"></div>
-        <div class="tower-card-meta">
-          <span class="tower-card-name">剑客</span>
-          <span class="tower-card-cost" data-cost>70金</span>
-        </div>
-        <span class="tower-card-tag">近战</span>
-      </button>
-      <button type="button" class="tower-card" data-tower="mage" id="btn-tower-mage">
-        <div class="tower-card-preview" id="tower-preview-mage"></div>
-        <div class="tower-card-meta">
-          <span class="tower-card-name">魔法师</span>
-          <span class="tower-card-cost" data-cost>140金</span>
-        </div>
-        <span class="tower-card-tag">远程</span>
-      </button>
-      <button type="button" class="tower-card" data-tower="knight" id="btn-tower-knight">
-        <div class="tower-card-preview" id="tower-preview-knight"></div>
-        <div class="tower-card-meta">
-          <span class="tower-card-name">骑士</span>
-          <span class="tower-card-cost" data-cost>110金</span>
-        </div>
-        <span class="tower-card-tag">近战</span>
-      </button>
-      <button type="button" class="tower-card active" data-tower="archer" id="btn-tower-archer">
-        <div class="tower-card-preview" id="tower-preview-archer"></div>
-        <div class="tower-card-meta">
-          <span class="tower-card-name">弓箭手</span>
-          <span class="tower-card-cost" data-cost>60金</span>
-        </div>
-        <span class="tower-card-tag">远程</span>
-      </button>
-    </div>
-
     <!-- 角色选择（幸存者 / 平台共用） -->
     <div id="overlay-charselect" class="overlay hidden">
       <div class="panel panel-wide">
@@ -188,7 +142,7 @@
     <!-- 幸存者内嵌面板 -->
     <div id="overlay-survivor" class="overlay hidden">
       <div class="panel">
-        <h2>幸存模式</h2>
+        <h2>生存模式</h2>
         <p class="sub">WASD / 方向键移动 · 武器自动攻击</p>
         <button id="btn-start-survivor" type="button">选择角色</button>
       </div>
@@ -215,8 +169,8 @@
     <!-- 平台射击面板 -->
     <div id="overlay-platform" class="overlay hidden">
       <div class="panel">
-        <h2>跳跃模式</h2>
-        <p class="sub">A/D 移动 · 空格跳跃 · 鼠标瞄准点击射击</p>
+        <h2>平台模式</h2>
+        <p class="sub">A/D 移动 · 空格跳跃（可二段跳） · 鼠标瞄准点击射击</p>
         <button id="btn-start-platform" type="button">选择角色</button>
       </div>
     </div>
@@ -272,6 +226,53 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
+  <div id="survivor-magic-dock" class="magic-dock hidden">
+    <button type="button" id="btn-magic-tornado" class="magic-card">
+      <div class="magic-card-preview" id="magic-preview-tornado"></div>
+      <div class="magic-card-meta">
+        <span class="magic-card-name">龙卷风</span>
+        <span class="magic-card-desc">全屏伤害</span>
+        <span class="magic-card-cd" id="magic-tornado-cd">就绪 · Q</span>
+      </div>
+    </button>
+  </div>
+
+  <div id="tower-dock" class="tower-dock hidden">
+    <button type="button" class="tower-card" data-tower="swordsman" id="btn-tower-swordsman">
+      <div class="tower-card-preview" id="tower-preview-swordsman"></div>
+      <div class="tower-card-meta">
+        <span class="tower-card-name">剑客</span>
+        <span class="tower-card-cost" data-cost>70金</span>
+      </div>
+      <span class="tower-card-tag">近战</span>
+    </button>
+    <button type="button" class="tower-card" data-tower="mage" id="btn-tower-mage">
+      <div class="tower-card-preview" id="tower-preview-mage"></div>
+      <div class="tower-card-meta">
+        <span class="tower-card-name">魔法师</span>
+        <span class="tower-card-cost" data-cost>140金</span>
+      </div>
+      <span class="tower-card-tag">远程</span>
+    </button>
+    <button type="button" class="tower-card" data-tower="knight" id="btn-tower-knight">
+      <div class="tower-card-preview" id="tower-preview-knight"></div>
+      <div class="tower-card-meta">
+        <span class="tower-card-name">骑士</span>
+        <span class="tower-card-cost" data-cost>110金</span>
+      </div>
+      <span class="tower-card-tag">近战</span>
+    </button>
+    <button type="button" class="tower-card active" data-tower="archer" id="btn-tower-archer">
+      <div class="tower-card-preview" id="tower-preview-archer"></div>
+      <div class="tower-card-meta">
+        <span class="tower-card-name">弓箭手</span>
+        <span class="tower-card-cost" data-cost>60金</span>
+      </div>
+      <span class="tower-card-tag">远程</span>
+    </button>
   </div>
 
   <script type="module" src="js/main.js"></script>

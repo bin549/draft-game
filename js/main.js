@@ -4,6 +4,7 @@ import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm } from "./rhythm.js";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js";
+import { loadMonsters } from "./monsters.js";
 
 const menu = document.getElementById("menu");
 const stage = document.getElementById("stage");
@@ -66,6 +67,7 @@ function enterMode(mode) {
         levelText: document.getElementById("level-text"),
         timeText: document.getElementById("time-text"),
         killText: document.getElementById("kill-text"),
+        stageText: document.getElementById("surv-stage-text"),
         btnStart: document.getElementById("btn-start-survivor"),
         btnRestart: document.getElementById("btn-restart-survivor"),
         magicDock: document.getElementById("survivor-magic-dock"),
@@ -89,6 +91,7 @@ function enterMode(mode) {
         hpText: document.getElementById("plat-hp-text"),
         scoreText: document.getElementById("plat-score-text"),
         killText: document.getElementById("plat-kill-text"),
+        stageText: document.getElementById("plat-stage-text"),
         ammoText: document.getElementById("ammo-text"),
         btnStart: document.getElementById("btn-start-platform"),
         btnRestart: document.getElementById("btn-restart-platform"),
@@ -281,4 +284,5 @@ window.addEventListener("resize", () => {
   if (!menu.classList.contains("hidden")) drawMenuPreviews();
 });
 
+loadMonsters(); // 预加载局内位图怪，菜单预览仍用矢量
 drawMenuPreviews();
