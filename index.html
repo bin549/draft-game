@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI编程演示Demo</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 主菜单 -->
+  <div id="menu" class="screen visible">
+    <div class="menu-bg" aria-hidden="true"></div>
+    <div class="menu-content">
+      <header class="menu-header">
+        <h1>AI编程演示Demo</h1>
+      </header>
+      <div class="game-grid" id="game-grid">
+        <button class="game-card" data-mode="survivor" type="button">
+          <div class="card-preview" id="preview-survivor"></div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">01</span><span class="tag">生存</span></div>
+            <h2>幸存模式</h2>
+            <p>选角开局 · 近战/远程分流 · 龙卷风魔法</p>
+            <p class="controls">点击进入 · 选角后开始</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="platform" type="button">
+          <div class="card-preview" id="preview-platform"></div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">02</span><span class="tag shoot">跳跃</span></div>
+            <h2>跳跃模式</h2>
+            <p>选角开局 · 近战贴身 / 远程射击</p>
+            <p class="controls">点击进入 · 选角后开始</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="tower" type="button">
+          <div class="card-preview" id="preview-tower"></div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">03</span><span class="tag defend">塔防</span></div>
+            <h2>塔防模式</h2>
+            <p>点击即开 · 剑客/骑士近战 · 法师/弓手远程</p>
+            <p class="controls">点击空位建塔 · 空格下一波</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="rhythm" type="button">
+          <div class="card-preview" id="preview-rhythm"></div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">04</span><span class="tag rhythm">节奏</span></div>
+            <h2>节奏模式</h2>
+            <p>刺字 · 跨栏 · 砍头 · 射击 · 踩点互动</p>
+            <p class="controls">点击进入 · 空格/点击踩点</p>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 游戏舞台 -->
+  <div id="stage" class="screen hidden">
+    <canvas id="game"></canvas>
+
+    <!-- 幸存者 HUD -->
+    <div id="hud-survivor" class="hud hidden">
+      <div class="stat">
+        <span class="label">生命</span>
+        <div class="bar"><div id="hp-fill"></div></div>
+        <span id="hp-text">100</span>
+      </div>
+      <div class="stat">
+        <span class="label">经验</span>
+        <div class="bar xp"><div id="xp-fill"></div></div>
+        <span id="level-text">Lv.1</span>
+      </div>
+      <div class="stat time">
+        <span id="time-text">00:00</span>
+        <span id="kill-text">击杀 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <!-- 幸存模式魔法卡片 -->
+    <div id="survivor-magic-dock" class="magic-dock hidden">
+      <button type="button" id="btn-magic-tornado" class="magic-card">
+        <div class="magic-card-preview" id="magic-preview-tornado"></div>
+        <div class="magic-card-meta">
+          <span class="magic-card-name">龙卷风</span>
+          <span class="magic-card-desc">全屏伤害</span>
+          <span class="magic-card-cd" id="magic-tornado-cd">就绪 · Q</span>
+        </div>
+      </button>
+    </div>
+
+    <!-- 平台射击 HUD -->
+    <div id="hud-platform" class="hud hidden">
+      <div class="stat">
+        <span class="label">生命</span>
+        <div class="bar"><div id="plat-hp-fill"></div></div>
+        <span id="plat-hp-text">100</span>
+      </div>
+      <div class="stat">
+        <span class="label">武器</span>
+        <span id="ammo-text">∞</span>
+      </div>
+      <div class="stat time">
+        <span id="plat-score-text">分数 0</span>
+        <span id="plat-kill-text">击杀 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <!-- 节奏天国 HUD -->
+    <div id="hud-rhythm" class="hud hidden">
+      <div class="stat">
+        <span class="label">生命</span>
+        <div class="bar"><div id="rhythm-hp-fill"></div></div>
+      </div>
+      <div class="stat time">
+        <span id="rhythm-score-text">选择关卡</span>
+        <span id="rhythm-combo-text"></span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <!-- 塔防 HUD -->
+    <div id="hud-tower" class="hud hud-tower hidden">
+      <div class="stat">
+        <span class="label">金币</span>
+        <span id="tower-gold-text">180</span>
+      </div>
+      <div class="stat">
+        <span class="label">生命</span>
+        <span id="tower-lives-text">20</span>
+      </div>
+      <div class="stat time">
+        <span id="tower-wave-text">波次 0/8</span>
+        <span id="tower-kill-text">击杀 0</span>
+        <button type="button" id="btn-tower-wave" class="tool-btn wave">开始第 1 波</button>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <!-- 塔防底部角色卡片 -->
+    <div id="tower-dock" class="tower-dock hidden">
+      <button type="button" class="tower-card" data-tower="swordsman" id="btn-tower-swordsman">
+        <div class="tower-card-preview" id="tower-preview-swordsman"></div>
+        <div class="tower-card-meta">
+          <span class="tower-card-name">剑客</span>
+          <span class="tower-card-cost" data-cost>70金</span>
+        </div>
+        <span class="tower-card-tag">近战</span>
+      </button>
+      <button type="button" class="tower-card" data-tower="mage" id="btn-tower-mage">
+        <div class="tower-card-preview" id="tower-preview-mage"></div>
+        <div class="tower-card-meta">
+          <span class="tower-card-name">魔法师</span>
+          <span class="tower-card-cost" data-cost>140金</span>
+        </div>
+        <span class="tower-card-tag">远程</span>
+      </button>
+      <button type="button" class="tower-card" data-tower="knight" id="btn-tower-knight">
+        <div class="tower-card-preview" id="tower-preview-knight"></div>
+        <div class="tower-card-meta">
+          <span class="tower-card-name">骑士</span>
+          <span class="tower-card-cost" data-cost>110金</span>
+        </div>
+        <span class="tower-card-tag">近战</span>
+      </button>
+      <button type="button" class="tower-card active" data-tower="archer" id="btn-tower-archer">
+        <div class="tower-card-preview" id="tower-preview-archer"></div>
+        <div class="tower-card-meta">
+          <span class="tower-card-name">弓箭手</span>
+          <span class="tower-card-cost" data-cost>60金</span>
+        </div>
+        <span class="tower-card-tag">远程</span>
+      </button>
+    </div>
+
+    <!-- 角色选择（幸存者 / 平台共用） -->
+    <div id="overlay-charselect" class="overlay hidden">
+      <div class="panel panel-wide">
+        <h2 id="charselect-title">选择角色</h2>
+        <p class="sub">剑客 · 魔法师 · 骑士 · 弓箭手</p>
+        <div id="char-grid" class="char-grid"></div>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <!-- 幸存者内嵌面板 -->
+    <div id="overlay-survivor" class="overlay hidden">
+      <div class="panel">
+        <h2>幸存模式</h2>
+        <p class="sub">WASD / 方向键移动 · 武器自动攻击</p>
+        <button id="btn-start-survivor" type="button">选择角色</button>
+      </div>
+    </div>
+
+    <div id="levelup" class="overlay hidden">
+      <div class="panel">
+        <h2>升级！选择强化</h2>
+        <div id="upgrade-choices"></div>
+      </div>
+    </div>
+
+    <div id="gameover-survivor" class="overlay hidden">
+      <div class="panel">
+        <h2>阵亡</h2>
+        <p id="result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-survivor" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 平台射击面板 -->
+    <div id="overlay-platform" class="overlay hidden">
+      <div class="panel">
+        <h2>跳跃模式</h2>
+        <p class="sub">A/D 移动 · 空格跳跃 · 鼠标瞄准点击射击</p>
+        <button id="btn-start-platform" type="button">选择角色</button>
+      </div>
+    </div>
+
+    <div id="gameover-platform" class="overlay hidden">
+      <div class="panel">
+        <h2 id="plat-end-title">失败</h2>
+        <p id="plat-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-platform" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 塔防面板 -->
+    <div id="overlay-tower" class="overlay hidden">
+      <div class="panel">
+        <h2>塔防模式</h2>
+        <p class="sub">选择塔种，点击虚线圆位建造 · 空格 / 按钮开始下一波<br />剑客 · 魔法师 · 骑士 · 弓箭手</p>
+        <button id="btn-start-tower" type="button">开始防守</button>
+      </div>
+    </div>
+
+    <div id="gameover-tower" class="overlay hidden">
+      <div class="panel">
+        <h2 id="tower-end-title">失败</h2>
+        <p id="tower-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-tower" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 节奏关卡选择 -->
+    <div id="overlay-rhythm-levels" class="overlay hidden">
+      <div class="panel panel-wide">
+        <h2>节奏模式</h2>
+        <p class="sub">选一关 · 空格或点击踩点 · 听节拍出手</p>
+        <div id="rhythm-level-grid" class="char-grid"></div>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-rhythm" class="overlay hidden">
+      <div class="panel">
+        <h2 id="rhythm-end-title">结束</h2>
+        <p id="rhythm-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-rhythm" type="button">再选关卡</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
