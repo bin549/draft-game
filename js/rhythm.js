@@ -791,7 +791,7 @@ function drawExecutioner(ctx, x, y, s, swing) {
   ctx.lineTo(8, 22);
   ctx.stroke();
   // 长刀：挥到位时刀刃够到左侧脖子
-  const ang = -1.25 + swing * 2.55;
+  const ang = -1.25 + swing * 2.85;
   ctx.save();
   ctx.translate(4, -18);
   ctx.rotate(ang);
