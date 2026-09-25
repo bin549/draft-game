@@ -17,7 +17,7 @@ const LEVELS = [
     id: "hurdle",
     name: "跨栏冲刺",
     desc: "踩点跳过栏杆 · 空格起跳",
-    hint: "栏杆靠近脚下时按空格跳跃",
+    hint: "栏杆靠近脚下时按空格 · 失手一次即失败",
     beats: 16,
   },
   {
@@ -40,6 +40,38 @@ const LEVELS = [
 const SHOOT_AIM = { x: 0.55, y: 0.4 };
 const SHOOT_ARCHER = { x: 0.22, y: 0.72 };
 const SHOOT_SPEED = 200;
+
+const HIGH_SCORE_KEY = "stickman-rhythm-highscores";
+
+function loadHighScores() {
+  try {
+    const raw = localStorage.getItem(HIGH_SCORE_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    return data && typeof data === "object" ? data : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function getHighScore(levelId) {
+  const n = loadHighScores()[levelId];
+  return typeof n === "number" && n > 0 ? n : 0;
+}
+
+/** @returns {{ best: number, isNew: boolean }} */
+function recordHighScore(levelId, score) {
+  const scores = loadHighScores();
+  const prev = typeof scores[levelId] === "number" ? scores[levelId] : 0;
+  const isNew = score > prev;
+  if (isNew) {
+    scores[levelId] = score;
+    try {
+      localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify(scores));
+    } catch (_) {}
+  }
+  return { best: Math.max(prev, score), isNew };
+}
 
 let canvas, ctx;
 let els = {};
@@ -120,11 +152,12 @@ function createPlayState(level) {
     sonHit: 0,
     jump: 0,
     hurdles: [],
+    runnerFall: null, // { x, y, vx, vy, rot, vr } 绊倒翻滚
     chopSwing: 0,
     headPullAmt: 0,
     headFallen: false,
     headFall: null, // { x, y, vy, rot, vr }
-    failTimer: 0, // 斩台失败后短暂播动画再结算
+    failTimer: 0, // 一击失败后短暂播动画再结算
     aimPulse: 0,
     arrows: [],
     targetHits: [],
@@ -138,11 +171,15 @@ function createPlayState(level) {
 function showLevelSelect() {
   mode = "select";
   running = true;
+  state = null;
   els.hud.classList.remove("hidden");
   els.result.classList.add("hidden");
   els.levelSelect.classList.remove("hidden");
+  const backBtn = els.hud?.querySelector("[data-back]");
+  if (backBtn) backBtn.textContent = "返回菜单";
   els.levelGrid.innerHTML = "";
   for (const lv of LEVELS) {
+    const best = getHighScore(lv.id);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "char-card rhythm-card";
@@ -151,6 +188,7 @@ function showLevelSelect() {
       <div class="char-body">
         <h3>${lv.name}</h3>
         <p>${lv.desc}</p>
+        <p class="rhythm-best">${best > 0 ? `最高 ${best}` : "暂无记录"}</p>
       </div>`;
     btn.addEventListener("click", () => startLevel(lv.id));
     els.levelGrid.appendChild(btn);
@@ -159,6 +197,7 @@ function showLevelSelect() {
   cancelAnimationFrame(raf);
   lastTs = performance.now();
   raf = requestAnimationFrame(loop);
+  updateHud();
 }
 
 function paintLevelPreviews() {
@@ -189,7 +228,7 @@ function drawLevelPreview(g, id, w, h) {
   g.lineWidth = 2;
   g.lineCap = "round";
   if (id === "tattoo") {
-    drawMom(g, w * 0.38, h * 0.72, 0.75, 0.55);
+    drawMom(g, w * 0.36, h * 0.72, 0.75, 0.7);
     drawSonKneel(g, w * 0.58, h * 0.74, 0.75, 0);
   } else if (id === "hurdle") {
     drawHurdles(g, 10, h * 0.72, w - 20, 0);
@@ -221,6 +260,8 @@ function startLevel(id) {
   mode = "play";
   els.levelSelect.classList.add("hidden");
   els.result.classList.add("hidden");
+  const backBtn = els.hud?.querySelector("[data-back]");
+  if (backBtn) backBtn.textContent = "返回选关";
   updateHud();
   beep(440, 0.08);
   lastTs = performance.now();
@@ -356,7 +397,20 @@ function missCue(c) {
       h.passed = true;
       h.tripped = true;
     }
-    state.bubble = { text: "哎呦!", life: 0.8 };
+    state.bubble = { text: "哎呦!", life: 0.9 };
+    state.jump = 0;
+    state.runnerFall = {
+      x: 0,
+      y: 0,
+      vx: 55,
+      vy: -160,
+      rot: 0,
+      vr: 5.2,
+    };
+    state.hp = 0;
+    state.failTimer = 0.95; // 跌倒动画后再出结果
+    updateHud();
+    return;
   } else if (id === "chop") {
     state.bubble = { text: "咔！", life: 1.1 };
     state.headFallen = true;
@@ -399,8 +453,10 @@ function endLevel(cleared) {
       : state.hp > 40
         ? "OK"
         : "Try Again";
+  const { best, isNew } = recordHighScore(state.level.id, state.score);
   els.endTitle.textContent = cleared || state.hp > 0 ? `${rank}！` : "失败";
-  els.resultText.textContent = `${state.level.name} · 分数 ${state.score} · Perfect ${state.perfect} · Miss ${state.miss} · 最高连击 ${state.maxCombo}`;
+  const newTag = isNew && state.score > 0 ? " · 新纪录！" : "";
+  els.resultText.textContent = `${state.level.name} · 分数 ${state.score}${newTag} · 最高 ${best} · Perfect ${state.perfect} · Miss ${state.miss} · 最高连击 ${state.maxCombo}`;
   els.result.classList.remove("hidden");
   beep(cleared || state.hp > 0 ? 520 : 200, 0.15);
 }
@@ -420,6 +476,23 @@ function update(dt) {
       state.headFall.vy += 980 * dt;
       state.headFall.y += state.headFall.vy * dt;
       state.headFall.rot += state.headFall.vr * dt;
+    }
+    if (state.runnerFall) {
+      const f = state.runnerFall;
+      f.vy += 1100 * dt;
+      f.y += f.vy * dt;
+      f.x += f.vx * dt;
+      f.rot += f.vr * dt;
+      // 落到地面后趴着滑一下
+      if (f.y > 48) {
+        f.y = 48;
+        f.vy = 0;
+        f.vx *= 0.88;
+        f.vr *= 0.82;
+        if (Math.abs(f.rot % (Math.PI * 2) - Math.PI / 2) > 0.15) {
+          f.rot += (Math.PI / 2 - f.rot) * Math.min(1, 8 * dt);
+        }
+      }
     }
     state.failTimer -= dt;
     if (state.failTimer <= 0) {
@@ -518,30 +591,37 @@ function drawMom(ctx, x, y, s, stab) {
   ctx.moveTo(0, 0);
   ctx.lineTo(10, 22);
   ctx.stroke();
-  // 刺字手臂
-  const reach = 18 + stab * 40;
+  // 左手（扶住）
   ctx.beginPath();
   ctx.moveTo(0, -18);
-  ctx.lineTo(reach, -8 - stab * 6);
+  ctx.lineTo(-14, -10);
+  ctx.stroke();
+  // 刺字手臂：伸长够到儿子后背
+  const reach = 22 + stab * 28;
+  const tipY = -10 - stab * 4;
+  ctx.beginPath();
+  ctx.moveTo(0, -18);
+  ctx.lineTo(reach, tipY);
   ctx.stroke();
   // 针
   ctx.beginPath();
-  ctx.moveTo(reach, -8 - stab * 6);
-  ctx.lineTo(reach + 14, -6 - stab * 4);
+  ctx.moveTo(reach, tipY);
+  ctx.lineTo(reach + 12, tipY + 2 - stab * 2);
   ctx.stroke();
   ctx.restore();
 }
 
 function drawSonKneel(ctx, x, y, s, dodge) {
-  // 闪避过程：先快速躲开再缓缓回来（dodge 从峰值降到 0）
+  // 闪避：往右（远离妈妈）躲开
   const slide = dodge > 0.2 ? 1 : dodge > 0 ? dodge / 0.2 : 0;
   ctx.save();
-  ctx.translate(x + slide * 18, y - slide * 8);
-  ctx.scale(s, s);
+  ctx.translate(x + slide * 20, y - slide * 8);
+  // 水平翻转：背对妈妈（头朝右，背朝左给妈妈刺）
+  ctx.scale(-s, s);
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2.2;
   ctx.lineCap = "round";
-  // 四肢着地
+  // 四肢着地（本地头在左；翻转后头在右）
   ctx.beginPath();
   ctx.arc(-6, -28, 7, 0, Math.PI * 2);
   ctx.stroke();
@@ -588,10 +668,11 @@ function drawBubble(ctx, x, y, text) {
   ctx.restore();
 }
 
-function drawRunner(ctx, x, y, s, jumpT) {
-  const lift = jumpT > 0 ? Math.sin((1 - jumpT / 0.45) * Math.PI) * 40 : 0;
+function drawRunner(ctx, x, y, s, jumpT, fall = null) {
+  const lift = !fall && jumpT > 0 ? Math.sin((1 - jumpT / 0.45) * Math.PI) * 40 : 0;
   ctx.save();
-  ctx.translate(x, y - lift);
+  ctx.translate(x + (fall?.x || 0), y - lift + (fall?.y || 0));
+  if (fall) ctx.rotate(fall.rot);
   ctx.scale(s, s);
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2.2;
@@ -611,16 +692,29 @@ function drawRunner(ctx, x, y, s, jumpT) {
   ctx.beginPath();
   ctx.moveTo(0, -22);
   ctx.lineTo(0, 0);
-  // 跑姿腿
-  const a = jumpT > 0 ? 0.9 : Math.sin(state?.anim * 12 || 0);
-  ctx.moveTo(0, 0);
-  ctx.lineTo(-12, 18 - a * 6);
-  ctx.moveTo(0, 0);
-  ctx.lineTo(14, 10 + a * 8);
-  ctx.moveTo(0, -14);
-  ctx.lineTo(-10, -4);
-  ctx.moveTo(0, -14);
-  ctx.lineTo(12, -8);
+  if (fall) {
+    // 跌倒：四肢张开乱甩
+    const flail = Math.sin((state?.anim || 0) * 18);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-16, 10 + flail * 4);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(14, 16 - flail * 3);
+    ctx.moveTo(0, -14);
+    ctx.lineTo(-18, -2 + flail * 5);
+    ctx.moveTo(0, -14);
+    ctx.lineTo(16, -8 - flail * 4);
+  } else {
+    // 跑姿腿
+    const a = jumpT > 0 ? 0.9 : Math.sin(state?.anim * 12 || 0);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-12, 18 - a * 6);
+    ctx.moveTo(0, 0);
+    ctx.lineTo(14, 10 + a * 8);
+    ctx.moveTo(0, -14);
+    ctx.lineTo(-10, -4);
+    ctx.moveTo(0, -14);
+    ctx.lineTo(12, -8);
+  }
   ctx.stroke();
   ctx.restore();
 }
@@ -747,10 +841,13 @@ function drawVictimHead(ctx, x, y, s, pull, fall = null) {
   if (fall) {
     ctx.translate(x + fall.x, y + fall.y);
     ctx.rotate(fall.rot);
+    ctx.scale(s, s);
   } else {
-    ctx.translate(x - pull * 20, y);
+    // 往后缩：缩小头圆模拟远离镜头，不往下挪
+    ctx.translate(x, y);
+    const shrink = 1 - Math.min(1, Math.max(0, pull)) * 0.55;
+    ctx.scale(s * shrink, s * shrink);
   }
-  ctx.scale(s, s);
   ctx.strokeStyle = "#1a1a1a";
   ctx.fillStyle = "#1a1a1a";
   ctx.lineWidth = 2;
@@ -923,10 +1020,11 @@ function renderPlay() {
       drawBubble(ctx, cx - 70, cy - 100, "快点趴下!");
     }
 
-    drawMom(ctx, cx - 55, cy + 40, 1.35, stab * 1.15);
+    drawMom(ctx, cx - 42, cy + 40, 1.35, stab);
     const dodgeT = Math.max(0, state.sonDodge);
     const hitShake = state.sonHit > 0 ? Math.sin(state.sonHit * 40) * 4 : 0;
-    drawSonKneel(ctx, cx + 45 + hitShake, cy + 50, 1.35, dodgeT);
+    // 站近一点，妈妈短手刚好够到背
+    drawSonKneel(ctx, cx + 28 + hitShake, cy + 50, 1.35, dodgeT);
   } else if (id === "hurdle") {
     // 地面持续向左滚动（不因判定重置）
     const scroll = state.beat * 0.35;
@@ -943,7 +1041,7 @@ function renderPlay() {
       if (hx < -40 || hx > w + 40) continue;
       drawOneHurdle(ctx, hx, cy + 40, !!h.tripped);
     }
-    drawRunner(ctx, runnerX, cy + 20, 1.4, state.jump);
+    drawRunner(ctx, runnerX, cy + 20, 1.4, state.jump, state.runnerFall);
   } else if (id === "chop") {
     drawBlock(ctx, cx - 35, cy + 60, 1.5);
     // 头：缩头 / 失败掉落
@@ -1127,6 +1225,19 @@ export function startRhythm(options) {
     showLevelSelect();
   };
   showLevelSelect();
+}
+
+/** 从关卡内 / 结算返回选关；已在选关则返回 false 交给主菜单 */
+export function handleRhythmBack() {
+  if (mode === "play" || mode === "result") {
+    state = null;
+    selectedLevel = null;
+    els.result?.classList.add("hidden");
+    showLevelSelect();
+    updateHud();
+    return true;
+  }
+  return false;
 }
 
 export function stopRhythm() {

@@ -1,7 +1,7 @@
 import { startSurvivor, stopSurvivor } from "./survivor.js";
 import { startPlatform, stopPlatform } from "./platform.js";
 import { startTower, stopTower } from "./tower.js";
-import { startRhythm, stopRhythm } from "./rhythm.js";
+import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js";
 import { loadMonsters } from "./monsters.js";
@@ -277,7 +277,11 @@ document.getElementById("game-grid").addEventListener("click", (e) => {
 });
 
 document.querySelectorAll("[data-back]").forEach((btn) => {
-  btn.addEventListener("click", showMenu);
+  btn.addEventListener("click", () => {
+    // 节奏关卡内返回 → 选关菜单；选关页再返回 → 主菜单
+    if (activeMode === "rhythm" && handleRhythmBack()) return;
+    showMenu();
+  });
 });
 
 window.addEventListener("resize", () => {

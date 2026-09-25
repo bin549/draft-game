@@ -664,6 +664,14 @@ html, body {
   line-height: 1.35;
 }
 
+.rhythm-best {
+  margin-top: 0.35rem;
+  font-size: 0.8rem !important;
+  opacity: 0.9 !important;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
 .panel h2 {
   font-size: 1.5rem;
   margin-bottom: 0.75rem;

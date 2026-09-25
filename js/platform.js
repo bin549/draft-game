@@ -207,6 +207,7 @@ function createState(stage = 1) {
     projectiles: [],
     meleeFx: [],
     particles: [],
+    floatTexts: [],
     shake: 0,
     shakeMag: 0,
     won: false,
@@ -330,6 +331,19 @@ function triggerShake(mag = 5, dur = 0.16) {
   state.shakeMag = Math.max(state.shakeMag || 0, mag);
 }
 
+function pushCritText(e) {
+  if (!state.floatTexts) state.floatTexts = [];
+  // 平台怪物脚底锚点，飘字放在头顶上方
+  const top = e.y - (e.drawH || e.radius * 2 || 40) - 10;
+  state.floatTexts.push({
+    x: e.x,
+    y: top,
+    text: "暴击",
+    life: 0.75,
+    maxLife: 0.75,
+  });
+}
+
 function fireArrow() {
   const p = state.player;
   if (p.fireTimer > 0) return;
@@ -369,6 +383,7 @@ function fireArrow() {
       e.hurt = hit.crit ? 0.28 : 0.2;
       e.x += Math.cos(angle) * (p.charId === "knight" ? 24 : 12) * (hit.crit ? 1.35 : 1);
       addParticle(body.x, body.y, hit.crit ? "#c23b3b" : "#8b3d14");
+      if (hit.crit) pushCritText(e);
       if (e.hp <= 0) doomed.push(e);
     }
     if (anyCrit) triggerShake(6, 0.18);
@@ -563,7 +578,10 @@ function update(dt) {
         e.hp -= hit.damage;
         e.hurt = hit.crit ? 0.3 : 0.2;
         addParticle(pr.x, pr.y, hit.crit ? "#c23b3b" : "#c45c26");
-        if (hit.crit) triggerShake(5.5, 0.16);
+        if (hit.crit) {
+          triggerShake(5.5, 0.16);
+          pushCritText(e);
+        }
         state.projectiles.splice(i, 1);
         if (e.hp <= 0) {
           state.score += e.score;
@@ -628,6 +646,15 @@ function update(dt) {
   for (let i = state.meleeFx.length - 1; i >= 0; i--) {
     state.meleeFx[i].life -= dt;
     if (state.meleeFx[i].life <= 0) state.meleeFx.splice(i, 1);
+  }
+
+  if (state.floatTexts) {
+    for (let i = state.floatTexts.length - 1; i >= 0; i--) {
+      const ft = state.floatTexts[i];
+      ft.life -= dt;
+      ft.y -= 36 * dt;
+      if (ft.life <= 0) state.floatTexts.splice(i, 1);
+    }
   }
 
   syncCamera(dt);
@@ -789,6 +816,21 @@ function render() {
     ctx.beginPath();
     ctx.arc(sx(pt.x), sy(pt.y), 2.4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // 暴击飘字
+  for (const ft of state.floatTexts || []) {
+    const t = Math.max(0, ft.life / ft.maxLife);
+    ctx.globalAlpha = Math.min(1, t * 1.5);
+    ctx.fillStyle = "#c23b3b";
+    ctx.strokeStyle = "rgba(255,248,235,0.95)";
+    ctx.lineWidth = 3;
+    ctx.font = "bold 20px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.strokeText(ft.text, sx(ft.x), sy(ft.y));
+    ctx.fillText(ft.text, sx(ft.x), sy(ft.y));
     ctx.globalAlpha = 1;
   }
 
