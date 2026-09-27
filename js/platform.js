@@ -1,4 +1,5 @@
 import {
+  drawFireball,
   drawHouse,
   drawSprout,
 } from "./draw.js";
@@ -24,6 +25,14 @@ const ARROW_SPEED = 620;
 const MAX_STAGES = 5;
 const CRIT_CHANCE = 0.18;
 const CRIT_MULT = 2;
+const SPIKE_DAMAGE = 18;
+const ROCK_DAMAGE = 30;
+const SPIKE_UNIT = 15;
+const SPIKE_H = 16;
+const DASH_SPEED = 980;
+const DASH_TIME = 0.14;
+const DASH_COOLDOWN = 0.06;
+const START_DASHES = 1;
 
 let canvas, ctx;
 let els = {};
@@ -112,24 +121,30 @@ function buildLevel(stage = 1) {
     enemies.push(enemyAt(type, slot[0] + (i % 5) * 18, slot[1], stage));
   }
 
+  const traps = buildTraps(stage);
+
   const decor = [];
   for (const pl of platforms) {
     if (pl.w < 120) continue;
     const n = Math.min(4, Math.floor(pl.w / 90));
     for (let i = 0; i < n; i++) {
       const t = (i + 0.4) / (n + 0.2);
+      const x = pl.x + pl.w * t;
+      if (decorBlocked(x, pl.y, traps)) continue;
       decor.push({
         kind: "house",
-        x: pl.x + pl.w * t,
+        x,
         y: pl.y,
         scale: 0.7 + (i % 3) * 0.12,
         variant: i + Math.floor(pl.x / 50),
       });
     }
     for (let i = 0; i < Math.floor(pl.w / 55); i++) {
+      const x = pl.x + 20 + i * 52 + (i % 2) * 8;
+      if (decorBlocked(x, pl.y, traps)) continue;
       decor.push({
         kind: "sprout",
-        x: pl.x + 20 + i * 52 + (i % 2) * 8,
+        x,
         y: pl.y,
         scale: 0.65 + (i % 3) * 0.15,
         variant: i,
@@ -137,14 +152,139 @@ function buildLevel(stage = 1) {
     }
   }
 
+  platforms.push(...buildMovers(stage));
+
   return {
     width: 3600,
     height: 640,
     platforms,
     enemies,
+    spikes: traps.spikes,
+    rocks: traps.rocks,
+    pickups: buildPickups(stage),
     decor,
     goal: { x: 3400, y: 300, w: 40, h: 60 },
     stage,
+  };
+}
+
+function buildPickups(stage) {
+  // 空中补给：只把用掉的那一次冲刺补回来
+  const byStage = [
+    [],
+    [
+      { x: 500, y: 340 },
+      { x: 1410, y: 240 },
+    ],
+    [{ x: 2200, y: 200 }],
+    [{ x: 2750, y: 210 }],
+    [],
+    [],
+  ];
+  return (byStage[stage] || []).map((spec) => ({
+    x: spec.x,
+    y: spec.y,
+    r: 16,
+    bob: spec.x * 0.01,
+    respawn: 0,
+  }));
+}
+
+function decorBlocked(x, platformY, traps) {
+  for (const s of traps.spikes) {
+    if (Math.abs(platformY - (s.y + s.h)) > 6) continue;
+    if (x > s.x - 14 && x < s.x + s.w + 14) return true;
+  }
+  for (const r of traps.rocks) {
+    if (Math.abs(platformY - r.landY) > 6) continue;
+    if (Math.abs(x - r.x) < r.w * 0.5 + 22) return true;
+  }
+  return false;
+}
+
+function buildTraps(stage) {
+  // 坐标都落在对应平台顶面之内；关卡越高，尖刺和落石越多，预警越短
+  const spikeLayout = [
+    { x: 500, y: 560, count: 4 },
+    { x: 968, y: 300, count: 3 },
+    { x: 1488, y: 320, count: 3 },
+    { x: 2488, y: 220, count: 3 },
+    { x: 1408, y: 580, count: 4 },
+    { x: 1664, y: 260, count: 3 },
+    { x: 1856, y: 340, count: 3 },
+    { x: 2480, y: 560, count: 4 },
+    { x: 3072, y: 240, count: 3 },
+    { x: 640, y: 560, count: 3 },
+    { x: 2800, y: 300, count: 3 },
+    { x: 3272, y: 360, count: 3 },
+  ];
+  const rockLayout = [
+    { x: 715, homeY: 188, landY: 360, triggerHalf: 76 },
+    { x: 2024, homeY: 168, landY: 340, triggerHalf: 82 },
+    { x: 1200, homeY: 208, landY: 380, triggerHalf: 78 },
+    { x: 2672, homeY: 128, landY: 300, triggerHalf: 88 },
+    { x: 2324, homeY: 400, landY: 560, triggerHalf: 62 },
+    { x: 2205, homeY: 108, landY: 280, triggerHalf: 72 },
+  ];
+  const spikeN = [4, 7, 9, 11, 12][stage - 1] ?? spikeLayout.length;
+  const rockN = [2, 3, 4, 5, 6][stage - 1] ?? rockLayout.length;
+  return {
+    spikes: spikeLayout.slice(0, spikeN).map(makeSpikeStrip),
+    rocks: rockLayout.slice(0, rockN).map((spec) => makeRock(spec, stage)),
+  };
+}
+
+function makeSpikeStrip(spec) {
+  return {
+    x: spec.x,
+    y: spec.y - SPIKE_H,
+    w: spec.count * SPIKE_UNIT,
+    h: SPIKE_H,
+    count: spec.count,
+  };
+}
+
+function buildMovers(stage) {
+  // 左右往复的平台，用来跨过空隙；关卡越高越多、越快
+  const layout = [
+    { x: 820, y: 560, w: 108, h: 18, min: 790, max: 1000, speed: 72 },
+    { x: 1000, y: 380, w: 88, h: 18, min: 980, max: 1170, speed: 78 },
+    { x: 1660, y: 560, w: 110, h: 18, min: 1658, max: 1880, speed: 84 },
+    { x: 1310, y: 390, w: 72, h: 16, min: 1304, max: 1470, speed: 76 },
+    { x: 2720, y: 540, w: 120, h: 18, min: 2710, max: 2980, speed: 88 },
+    { x: 3020, y: 312, w: 100, h: 16, min: 3000, max: 3195, speed: 80 },
+  ];
+  const n = [2, 3, 4, 5, 6][stage - 1] ?? 2;
+  return layout.slice(0, n).map((spec, i) => ({
+    x: spec.x,
+    y: spec.y,
+    w: spec.w,
+    h: spec.h,
+    move: {
+      min: spec.min,
+      max: spec.max - spec.w,
+      speed: spec.speed + (stage - 1) * 8,
+      dir: i % 2 === 0 ? 1 : -1,
+      dx: 0,
+    },
+  }));
+}
+
+function makeRock(spec, stage) {
+  return {
+    x: spec.x,
+    homeY: spec.homeY,
+    landY: spec.landY,
+    y: spec.homeY,
+    w: 30,
+    h: 32,
+    vy: 0,
+    phase: "idle",
+    timer: 0,
+    arm: 0.45,
+    hit: false,
+    triggerHalf: spec.triggerHalf,
+    warnTime: Math.max(0.22, 0.5 - (stage - 1) * 0.06),
   };
 }
 
@@ -203,15 +343,115 @@ function createState(stage = 1) {
       critMult: CRIT_MULT,
       fireCooldown: s.fireCooldown,
       projectileSpeed: s.projectileSpeed,
+      dashes: START_DASHES,
+      maxDashes: START_DASHES,
+      dashTime: 0,
+      dashCooldown: 0,
+      dashDirX: 1,
+      dashDirY: 0,
+      dashHeld: false,
+      dashing: false,
+      dashLanded: true,
     },
     projectiles: [],
+    enemyProjectiles: [],
     meleeFx: [],
     particles: [],
     floatTexts: [],
+    dashTrail: [],
     shake: 0,
     shakeMag: 0,
     won: false,
   };
+}
+
+let seenGuide = new Set();
+
+const GUIDE = [
+  {
+    id: "move",
+    text: "A / D 或方向键移动",
+    hold: 0.45,
+    max: 7,
+    when: () => state.stage === 1 && state.time > 0.35,
+    until: () => !!(keys["KeyA"] || keys["KeyD"] || keys["ArrowLeft"] || keys["ArrowRight"]),
+  },
+  {
+    id: "jump",
+    text: "空格、W 或 ↑ 跳跃，可从下方跳上平台，空中再跳一次",
+    hold: 0.45,
+    max: 8,
+    when: () => state.stage === 1 && seenGuide.has("move") && !state.didJump,
+    until: () => !!state.didJump,
+  },
+  {
+    id: "attack",
+    text: () =>
+      state.player.attackType === "melee" ? "鼠标瞄准，点击攻击" : "鼠标瞄准，点击射击",
+    hold: 0.5,
+    max: 8,
+    when: () => state.stage === 1 && seenGuide.has("jump") && !state.didAttack,
+    until: () => !!state.didAttack,
+  },
+  {
+    id: "dash",
+    text: "Shift 朝按键方向冲刺。落地恢复，晶石可补一次",
+    hold: 0.6,
+    max: 8,
+    when: () =>
+      state.stage === 1 &&
+      seenGuide.has("attack") &&
+      state.player.dashes >= state.player.maxDashes &&
+      state.player.dashTime <= 0,
+    until: () => state.player.dashTime > 0 || state.player.dashing || state.player.dashes < state.player.maxDashes,
+  },
+];
+
+function hideGuide() {
+  els.hint?.classList.add("hidden");
+}
+
+function resetGuide() {
+  seenGuide = new Set();
+  state.hint = null;
+  hideGuide();
+}
+
+function showGuide(spec) {
+  state.hint = {
+    id: spec.id,
+    text: typeof spec.text === "function" ? spec.text() : spec.text,
+    age: 0,
+    hold: spec.hold,
+    max: spec.max,
+  };
+  if (!els.hint) return;
+  els.hint.textContent = state.hint.text;
+  els.hint.classList.remove("hidden");
+}
+
+function updateGuide(dt) {
+  if (!state) return;
+  if (state.hint) {
+    const spec = GUIDE.find((g) => g.id === state.hint.id);
+    state.hint.age += dt;
+    const acted = state.hint.age >= state.hint.hold && (!spec?.until || spec.until());
+    const left = state.hint.age >= 1.1 && spec?.leave && spec.leave();
+    const expired = state.hint.age >= state.hint.max;
+    if (acted || left || expired) {
+      seenGuide.add(state.hint.id);
+      state.hint = null;
+      hideGuide();
+    }
+  }
+  if (!state.hint) {
+    for (const spec of GUIDE) {
+      if (seenGuide.has(spec.id)) continue;
+      if (!spec.when()) continue;
+      showGuide(spec);
+      break;
+    }
+  }
 }
 
 function updateHud() {
@@ -221,6 +461,7 @@ function updateHud() {
   els.scoreText.textContent = `分数 ${state.score}`;
   els.killText.textContent = `击杀 ${state.kills}`;
   if (els.stageText) els.stageText.textContent = `关卡 ${state.stage}/${MAX_STAGES}`;
+  if (els.dashText) els.dashText.textContent = `冲刺 ${p.dashes}/${p.maxDashes}`;
   if (els.ammoText) {
     if (p.attackType === "melee") {
       els.ammoText.textContent = p.weapon === "bolt" ? "盾击" : "近战";
@@ -250,10 +491,158 @@ function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
+function damagePlayer(amount, knockVy) {
+  const p = state.player;
+  if (p.invuln > 0) return false;
+  p.hp -= amount;
+  p.invuln = 0.7;
+  p.onGround = false;
+  p.vy = knockVy;
+  addParticle(p.x, p.y, "#c23b3b");
+  triggerShake(amount >= ROCK_DAMAGE ? 8 : 5, 0.18);
+  if (p.hp <= 0) {
+    p.hp = 0;
+    updateHud();
+    endGame(false);
+    return true;
+  }
+  return false;
+}
+
+function overlapPlayerRock(r) {
+  const p = state.player;
+  return rectOverlap(
+    p.x - p.w / 2,
+    p.y - p.h / 2,
+    p.w,
+    p.h,
+    r.x - r.w / 2,
+    r.y - r.h / 2,
+    r.w,
+    r.h
+  );
+}
+
+function rockHitsPlayer(r) {
+  if (r.hit || !overlapPlayerRock(r)) return false;
+  r.hit = true;
+  if (state.player.invuln > 0) return false;
+  const p = state.player;
+  const dir = Math.sign(p.x - r.x) || -1;
+  p.x += dir * 16;
+  return damagePlayer(ROCK_DAMAGE, -420);
+}
+
+function settleRock(r) {
+  const foot = r.h * 0.46;
+  r.y = r.landY - foot;
+  r.vy = 0;
+  r.phase = "rest";
+  if (r.solid) return;
+  r.solid = true;
+  const bodyH = foot * 2;
+  // 落下后变成实体，能站上去，也不会再升回去
+  state.level.platforms.push({
+    x: r.x - r.w * 0.46,
+    y: r.landY - bodyH,
+    w: r.w * 0.92,
+    h: bodyH,
+    rock: true,
+  });
+}
+
+function rockImpact(r) {
+  triggerShake(6, 0.14);
+  for (let i = 0; i < 8; i++) {
+    const a = Math.PI + (Math.random() - 0.5) * Math.PI;
+    const sp = 40 + Math.random() * 120;
+    state.particles.push({
+      x: r.x + (Math.random() - 0.5) * r.w,
+      y: r.landY,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp - 30,
+      life: 0.32 + Math.random() * 0.22,
+      color: i % 2 ? "#1a1a1a" : "#8a8175",
+    });
+  }
+}
+
+function updateTraps(dt) {
+  const p = state.player;
+  if (p.invuln <= 0) {
+    const left = p.x - p.w / 2;
+    const top = p.y - p.h / 2;
+    for (const s of state.level.spikes) {
+      if (
+        !rectOverlap(left, top, p.w, p.h, s.x + 2, s.y + 1, s.w - 4, s.h - 1)
+      ) {
+        continue;
+      }
+      const dir = Math.sign(p.x - (s.x + s.w / 2)) || -p.facing || -1;
+      p.x += dir * 18;
+      if (damagePlayer(SPIKE_DAMAGE, -360)) return true;
+      break;
+    }
+  }
+
+  for (const r of state.level.rocks) {
+    if (r.phase === "rest") continue;
+    if (r.arm > 0) r.arm -= dt;
+
+    if (r.phase === "idle") {
+      const inX = Math.abs(p.x - r.x) < r.triggerHalf;
+      // 只在落点平台附近触发，避免从平台下方跳过时提前砸落
+      const onPath = p.y > r.homeY - 10 && p.y < r.landY + 28;
+      if (r.arm <= 0 && inX && onPath) {
+        r.phase = "warn";
+        r.timer = r.warnTime;
+      }
+    } else if (r.phase === "warn") {
+      r.timer -= dt;
+      if (r.timer <= 0) {
+        r.phase = "fall";
+        r.vy = 60;
+        r.hit = false;
+      }
+    } else if (r.phase === "fall") {
+      r.vy = Math.min(980, r.vy + 2100 * dt);
+      r.y += r.vy * dt;
+      const foot = r.h * 0.46;
+      if (r.y + foot >= r.landY) {
+        r.y = r.landY - foot;
+        r.vy = 0;
+        const dead = rockHitsPlayer(r);
+        rockImpact(r);
+        settleRock(r);
+        if (dead) return true;
+      } else if (rockHitsPlayer(r)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function updateMovingPlatforms(dt) {
+  for (const pl of state.level.platforms) {
+    if (!pl.move) continue;
+    const prev = pl.x;
+    pl.x += pl.move.dir * pl.move.speed * dt;
+    if (pl.x < pl.move.min) {
+      pl.x = pl.move.min;
+      pl.move.dir = 1;
+    } else if (pl.x > pl.move.max) {
+      pl.x = pl.move.max;
+      pl.move.dir = -1;
+    }
+    pl.move.dx = pl.x - prev;
+  }
+}
+
 function resolvePlatforms(ent, dt) {
   const plats = state.level.platforms;
   ent.onGround = false;
-  ent.vy += GRAVITY * dt;
+  ent.vy += ent.dashing ? 0 : GRAVITY * dt;
   ent.x += ent.vx * dt;
   ent.y += ent.vy * dt;
 
@@ -267,34 +656,14 @@ function resolvePlatforms(ent, dt) {
   for (const pl of plats) {
     if (!rectOverlap(left, top, w, h, pl.x, pl.y, pl.w, pl.h)) continue;
 
-    const prevTop = ent.y - hh - ent.vy * dt;
-    const prevBottom = prevTop + h;
+    // 只踩上表面：向上跳时穿过平台，落下后站上去
+    const prevBottom = ent.y - hh - ent.vy * dt + h;
+    if (ent.vy < 0 || prevBottom > pl.y + 10) continue;
 
-    // 从上方落下
-    if (ent.vy >= 0 && prevBottom <= pl.y + 6) {
-      ent.y = pl.y - hh;
-      ent.vy = 0;
-      ent.onGround = true;
-      top = ent.y - hh;
-      continue;
-    }
-
-    // 撞头
-    if (ent.vy < 0 && prevTop >= pl.y + pl.h - 6) {
-      ent.y = pl.y + pl.h + hh;
-      ent.vy = 0;
-      top = ent.y - hh;
-      continue;
-    }
-
-    // 侧面
-    const overlapX =
-      Math.min(left + w, pl.x + pl.w) - Math.max(left, pl.x);
-    if (ent.x < pl.x + pl.w / 2) {
-      ent.x -= overlapX;
-    } else {
-      ent.x += overlapX;
-    }
+    ent.y = pl.y - hh;
+    ent.vy = 0;
+    ent.onGround = true;
+    top = ent.y - hh;
     left = ent.x - hw;
   }
 
@@ -306,6 +675,22 @@ function resolvePlatforms(ent, dt) {
   if (ent.x > state.level.width - hw) {
     ent.x = state.level.width - hw;
     ent.vx = 0;
+  }
+
+  ent.riding = null;
+  if (ent.onGround) {
+    const feet = ent.y + hh;
+    for (const pl of plats) {
+      if (!pl.move) continue;
+      if (
+        Math.abs(feet - pl.y) <= 2 &&
+        ent.x >= pl.x - 2 &&
+        ent.x <= pl.x + pl.w + 2
+      ) {
+        ent.riding = pl;
+        break;
+      }
+    }
   }
 
   // 掉落即受伤并重生到最近平台上方
@@ -345,6 +730,7 @@ function pushCritText(e) {
 }
 
 function fireArrow() {
+  state.didAttack = true;
   const p = state.player;
   if (p.fireTimer > 0) return;
 
@@ -420,6 +806,7 @@ function endGame(won) {
     ? `关卡 ${state.stage}/${MAX_STAGES} · 分数 ${state.score} · 击杀 ${state.kills} · 用时 ${state.time.toFixed(1)}s`
     : `关卡 ${state.stage}/${MAX_STAGES} · 分数 ${state.score} · 击杀 ${state.kills}`;
   els.gameover.classList.remove("hidden");
+  hideGuide();
 }
 
 function advanceStage() {
@@ -447,6 +834,8 @@ function advanceStage() {
   state = createState(next);
   Object.assign(state.player, kept);
   state.player.hp = Math.min(kept.maxHp, hp + 20);
+  state.player.dashes = START_DASHES;
+  state.player.maxDashes = START_DASHES;
   state.score = score;
   state.kills = kills;
   state.time = time;
@@ -454,6 +843,118 @@ function advanceStage() {
   state.meleeFx = [];
   syncCamera(null, true);
   updateHud();
+}
+
+function wantsDash() {
+  return !!(keys["ShiftLeft"] || keys["ShiftRight"] || keys["KeyK"]);
+}
+
+function dashDirection(p) {
+  let x = 0;
+  let y = 0;
+  if (keys["KeyA"] || keys["ArrowLeft"]) x -= 1;
+  if (keys["KeyD"] || keys["ArrowRight"]) x += 1;
+  if (keys["KeyW"] || keys["ArrowUp"]) y -= 1;
+  if (keys["KeyS"] || keys["ArrowDown"]) y += 1;
+  if (x === 0 && y === 0) x = p.facing || 1;
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
+
+function startDash(p) {
+  const dir = dashDirection(p);
+  p.dashes -= 1;
+  p.dashTime = DASH_TIME;
+  p.dashCooldown = 0;
+  p.dashDirX = dir.x;
+  p.dashDirY = dir.y;
+  p.dashing = true;
+  p.onGround = false;
+  p.vx = dir.x * DASH_SPEED;
+  p.vy = dir.y * DASH_SPEED;
+  if (dir.x !== 0) p.facing = dir.x > 0 ? 1 : -1;
+  for (let i = 0; i < 6; i++) {
+    state.particles.push({
+      x: p.x,
+      y: p.y,
+      vx: -dir.x * (80 + Math.random() * 140) + (Math.random() - 0.5) * 40,
+      vy: -dir.y * (80 + Math.random() * 140) + (Math.random() - 0.5) * 40,
+      life: 0.18 + Math.random() * 0.12,
+      color: "#1a1a1a",
+    });
+  }
+}
+
+function updateDash(dt) {
+  const p = state.player;
+  const wantDash = wantsDash();
+  const wantJump = keys["Space"] || keys["KeyW"] || keys["ArrowUp"];
+  let dashedJump = false;
+
+  if (p.dashCooldown > 0) p.dashCooldown -= dt;
+
+  if (p.dashTime > 0 && wantJump && !p.jumpHeld) {
+    p.dashTime = 0;
+    p.dashing = false;
+    p.vy = JUMP_V * 1.08;
+    p.vx = (p.dashDirX || p.facing || 1) * MOVE_SPEED * 1.45;
+    p.onGround = false;
+    dashedJump = true;
+    state.didJump = true;
+  } else if (p.dashTime > 0) {
+    p.dashTime -= dt;
+    if (p.dashTime > 0) {
+      p.dashing = true;
+      p.vx = p.dashDirX * DASH_SPEED;
+      p.vy = p.dashDirY * DASH_SPEED;
+      if (p.dashDirX !== 0) p.facing = p.dashDirX > 0 ? 1 : -1;
+      state.dashTrail.push({
+        x: p.x,
+        y: p.y,
+        facing: p.facing,
+        anim: p.anim,
+        charId: p.charId,
+        life: 0.18,
+        maxLife: 0.18,
+      });
+    } else {
+      p.dashing = false;
+      p.vx *= 0.42;
+      p.vy *= 0.42;
+      p.dashCooldown = DASH_COOLDOWN;
+    }
+  } else if (wantDash && !p.dashHeld && p.dashes > 0 && p.dashCooldown <= 0) {
+    startDash(p);
+  } else if (wantDash && !p.dashHeld && p.dashes <= 0) {
+    state.particles.push({
+      x: p.x,
+      y: p.y - 8,
+      vx: 0,
+      vy: -40,
+      life: 0.2,
+      color: "#8a8175",
+    });
+  }
+  p.dashHeld = wantDash;
+  return dashedJump;
+}
+
+function updatePickups(dt) {
+  const p = state.player;
+  for (const it of state.level.pickups) {
+    if (it.respawn > 0) {
+      it.respawn = Math.max(0, it.respawn - dt);
+      continue;
+    }
+    const y = it.y + Math.sin(state.time * 3 + it.bob) * 5;
+    const dx = it.x - p.x;
+    const dy = y - (p.y - 8);
+    if (dx * dx + dy * dy > (it.r + 18) ** 2) continue;
+    if (p.dashes >= p.maxDashes) continue;
+    p.dashes = p.maxDashes;
+    it.respawn = 2.6;
+    addParticle(it.x, y, "#c45c26");
+  }
 }
 
 function update(dt) {
@@ -472,11 +973,14 @@ function update(dt) {
   if (keys["KeyA"] || keys["ArrowLeft"]) mx -= 1;
   if (keys["KeyD"] || keys["ArrowRight"]) mx += 1;
   p.vx = mx * MOVE_SPEED;
-  if (mx !== 0) p.facing = mx > 0 ? 1 : -1;
+  if (mx !== 0 && p.dashTime <= 0) p.facing = mx > 0 ? 1 : -1;
+
+  const dashedJump = updateDash(dt);
 
   const wantJump = keys["Space"] || keys["KeyW"] || keys["ArrowUp"];
-  if (wantJump && !p.jumpHeld) {
+  if (!dashedJump && p.dashTime <= 0 && wantJump && !p.jumpHeld) {
     if (p.onGround || p.jumpsLeft > 0) {
+      state.didJump = true;
       const isDouble = !p.onGround;
       p.vy = isDouble ? DOUBLE_JUMP_V : JUMP_V;
       p.onGround = false;
@@ -507,8 +1011,30 @@ function update(dt) {
   if (p.fireTimer > 0) p.fireTimer -= dt;
   if (mouse.down) fireArrow();
 
+  updateMovingPlatforms(dt);
+  if (p.riding) p.x += p.riding.move.dx;
+
   const fell = resolvePlatforms(p, dt);
   if (p.onGround) p.jumpsLeft = MAX_JUMPS;
+  if (!p.onGround) p.dashLanded = false;
+  if (p.onGround && p.dashTime <= 0 && !p.dashLanded) {
+    const before = p.dashes;
+    p.dashes = p.maxDashes;
+    p.dashLanded = true;
+    if (before < p.dashes) {
+      for (let i = 0; i < 4; i++) {
+        state.particles.push({
+          x: p.x + (Math.random() - 0.5) * 10,
+          y: p.y + p.h * 0.35,
+          vx: (Math.random() - 0.5) * 50,
+          vy: -30 - Math.random() * 40,
+          life: 0.22,
+          color: "#c45c26",
+        });
+      }
+    }
+  }
+  updatePickups(dt);
   if (fell === "fell") {
     p.hp -= 25;
     p.invuln = 0.8;
@@ -518,6 +1044,9 @@ function update(dt) {
     p.vy = 0;
     p.jumpsLeft = MAX_JUMPS;
     p.jumpHeld = false;
+    p.dashTime = 0;
+    p.dashing = false;
+    p.dashes = p.maxDashes;
     addParticle(p.x, p.y, "#c23b3b");
     if (p.hp <= 0) {
       p.hp = 0;
@@ -526,6 +1055,8 @@ function update(dt) {
       return;
     }
   }
+
+  if (updateTraps(dt)) return;
 
   // 通关检测
   const g = state.level.goal;
@@ -610,12 +1141,36 @@ function update(dt) {
       e.facing = -1;
     }
 
-    // 简单追击：玩家靠近时加速
     const body = monsterBodyCenter(e);
     const dx = p.x - body.x;
     const dy = p.y - body.y;
     const dist = Math.hypot(dx, dy);
-    if (dist < 220 && Math.abs(dy) < 100) {
+
+    if (e.attack === "fireball") {
+      if (e.fireTimer > 0) e.fireTimer -= dt;
+      if (dx !== 0) e.facing = dx > 0 ? 1 : -1;
+      const prefer = e.preferRange || 210;
+      if (dist < prefer + 80 && Math.abs(dy) < 170) {
+        if (dist < prefer - 36) {
+          e.vx = -Math.sign(dx || 1) * Math.max(40, e.speed * 0.65);
+        }
+        if (e.fireTimer <= 0 && dist < prefer + 40) {
+          e.fireTimer = e.fireCooldown || 1.3;
+          const ang = Math.atan2(dy, dx);
+          const spd = e.fireballSpeed || 210;
+          state.enemyProjectiles.push({
+            x: body.x + Math.cos(ang) * 18,
+            y: body.y + Math.sin(ang) * 8,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            angle: ang,
+            life: 2.2,
+            damage: Math.max(6, Math.round(e.damage * 0.9)),
+            radius: 9,
+          });
+        }
+      }
+    } else if (dist < 220 && Math.abs(dy) < 100) {
       e.vx = Math.sign(dx) * (e.speed * 1.35 || 90);
       e.facing = Math.sign(dx) || e.facing;
     }
@@ -633,6 +1188,13 @@ function update(dt) {
         return;
       }
     }
+  }
+
+  if (updateEnemyProjectiles(dt)) return;
+
+  for (let i = state.dashTrail.length - 1; i >= 0; i--) {
+    state.dashTrail[i].life -= dt;
+    if (state.dashTrail[i].life <= 0) state.dashTrail.splice(i, 1);
   }
 
   for (let i = state.particles.length - 1; i >= 0; i--) {
@@ -658,7 +1220,43 @@ function update(dt) {
   }
 
   syncCamera(dt);
+  updateGuide(dt);
   updateHud();
+}
+
+function updateEnemyProjectiles(dt) {
+  const p = state.player;
+  const list = state.enemyProjectiles;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const pr = list[i];
+    pr.x += pr.vx * dt;
+    pr.y += pr.vy * dt;
+    pr.angle = Math.atan2(pr.vy, pr.vx);
+    pr.life -= dt;
+
+    let gone = pr.life <= 0 || pr.x < -40 || pr.x > state.level.width + 40;
+    if (!gone) {
+      for (const pl of state.level.platforms) {
+        if (pr.x > pl.x && pr.x < pl.x + pl.w && pr.y > pl.y && pr.y < pl.y + pl.h) {
+          gone = true;
+          break;
+        }
+      }
+    }
+    if (!gone) {
+      const dx = p.x - pr.x;
+      const dy = p.y - 6 - pr.y;
+      if (dx * dx + dy * dy < (pr.radius + 12) ** 2) {
+        gone = true;
+        if (p.invuln <= 0) {
+          p.x += Math.sign(dx || 1) * 8;
+          if (damagePlayer(pr.damage, -240)) return true;
+        }
+      }
+    }
+    if (gone) list.splice(i, 1);
+  }
+  return false;
 }
 
 function syncCamera(dt, instant = false) {
@@ -685,15 +1283,26 @@ function syncCamera(dt, instant = false) {
 
 function drawPlatforms(sx, sy) {
   for (const pl of state.level.platforms) {
+    if (pl.rock) continue;
     const x = sx(pl.x);
     const y = sy(pl.y);
-    ctx.fillStyle = "#ebe4d6";
+    ctx.fillStyle = pl.move ? "#e2d5c0" : "#ebe4d6";
     ctx.strokeStyle = "#1a1a1a";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.rect(x, y, pl.w, pl.h);
     ctx.fill();
     ctx.stroke();
+    if (pl.move) {
+      ctx.beginPath();
+      ctx.moveTo(x + 10, y + pl.h * 0.55);
+      ctx.lineTo(x + 18, y + pl.h * 0.28);
+      ctx.lineTo(x + 18, y + pl.h * 0.82);
+      ctx.moveTo(x + pl.w - 10, y + pl.h * 0.55);
+      ctx.lineTo(x + pl.w - 18, y + pl.h * 0.28);
+      ctx.lineTo(x + pl.w - 18, y + pl.h * 0.82);
+      ctx.stroke();
+    }
     // 顶面高光
     ctx.beginPath();
     ctx.moveTo(x + 2, y + 3);
@@ -702,6 +1311,139 @@ function drawPlatforms(sx, sy) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.strokeStyle = "#1a1a1a";
+  }
+}
+
+function drawSpikes(sx, sy) {
+  ctx.fillStyle = "#1a1a1a";
+  for (const s of state.level.spikes) {
+    const unit = s.w / s.count;
+    const baseY = sy(s.y + s.h);
+    const tipY = sy(s.y);
+    for (let i = 0; i < s.count; i++) {
+      const x0 = sx(s.x + i * unit);
+      ctx.beginPath();
+      ctx.moveTo(x0 + 1.5, baseY);
+      ctx.lineTo(x0 + unit / 2, tipY);
+      ctx.lineTo(x0 + unit - 1.5, baseY);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
+function drawBoulder(x, y, w, h) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.fillStyle = "#d7cebf";
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.42, h * 0.08);
+  ctx.lineTo(-w * 0.34, -h * 0.28);
+  ctx.lineTo(-w * 0.08, -h * 0.46);
+  ctx.lineTo(w * 0.22, -h * 0.34);
+  ctx.lineTo(w * 0.46, -h * 0.02);
+  ctx.lineTo(w * 0.3, h * 0.38);
+  ctx.lineTo(-w * 0.12, h * 0.44);
+  ctx.lineTo(-w * 0.4, h * 0.26);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.08, -h * 0.12);
+  ctx.lineTo(w * 0.06, h * 0.08);
+  ctx.lineTo(-w * 0.04, h * 0.24);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRocks(sx, sy) {
+  const t = state.time;
+  for (const r of state.level.rocks) {
+    let alpha = 0.14;
+    let rx = 9;
+    if (r.phase === "warn") {
+      const pulse = Math.sin(t * 22);
+      alpha = 0.24 + pulse * 0.1;
+      rx = 13 + pulse * 3;
+    } else if (r.phase === "fall") {
+      const span = Math.max(40, r.landY - r.homeY);
+      const k = Math.min(1, Math.max(0, (r.y - r.homeY) / span));
+      alpha = 0.2 + k * 0.28;
+      rx = 12 + k * 8;
+    }
+    if (r.phase !== "rest") {
+      ctx.fillStyle = `rgba(26,26,26,${alpha})`;
+      ctx.beginPath();
+      ctx.ellipse(sx(r.x), sy(r.landY) + 1, rx, 3.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const wobble = r.phase === "warn" ? Math.sin(t * 42 + r.x) * 2.4 : 0;
+    drawBoulder(sx(r.x) + wobble, sy(r.y), r.w, r.h);
+
+    if (r.phase === "warn") {
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.5;
+      const x = sx(r.x);
+      const y = sy(r.y);
+      ctx.beginPath();
+      ctx.moveTo(x - r.w * 0.72, y - 7);
+      ctx.lineTo(x - r.w * 0.72, y + 6);
+      ctx.moveTo(x + r.w * 0.72, y - 5);
+      ctx.lineTo(x + r.w * 0.72, y + 8);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawPickups(sx, sy) {
+  for (const it of state.level.pickups) {
+    if (it.respawn > 0) continue;
+    const y = it.y + Math.sin(state.time * 3 + it.bob) * 5;
+    const x = sx(it.x);
+    const py = sy(y);
+    ctx.save();
+    ctx.translate(x, py);
+    ctx.rotate(Math.sin(state.time * 1.4 + it.bob) * 0.35);
+    ctx.fillStyle = "#f3e2b0";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -12);
+    ctx.lineTo(9, 0);
+    ctx.lineTo(0, 12);
+    ctx.lineTo(-9, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-3.5, 2);
+    ctx.lineTo(0, -3.5);
+    ctx.lineTo(3.5, 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawDashTrail(sx, sy) {
+  const p = state.player;
+  for (const t of state.dashTrail) {
+    const a = Math.max(0, t.life / t.maxLife);
+    ctx.save();
+    ctx.globalAlpha = a * 0.42;
+    drawCharacter(
+      ctx,
+      t.charId || p.charId || "archer",
+      sx(t.x),
+      sy(t.y),
+      t.facing || 1,
+      t.anim || 0
+    );
+    ctx.restore();
   }
 }
 
@@ -775,6 +1517,10 @@ function render() {
     }
   }
 
+  drawSpikes(sx, sy);
+  drawRocks(sx, sy);
+  drawPickups(sx, sy);
+
   for (const e of state.level.enemies) {
     const ds = e.drawScale || 0.72;
     drawMonster(ctx, e.type, sx(e.x), sy(e.y), ds, e.anim, e.hurt, e.facing, "feet");
@@ -789,12 +1535,17 @@ function render() {
   }
 
   const p = state.player;
+  drawDashTrail(sx, sy);
   if (!(p.invuln > 0 && Math.floor(p.invuln * 18) % 2 === 0)) {
     drawCharacter(ctx, p.charId || "archer", sx(p.x), sy(p.y), p.facing, p.anim);
   }
 
   for (const pr of state.projectiles) {
     drawWeaponProjectile(ctx, pr.weapon || "arrow", sx(pr.x), sy(pr.y), pr.angle, pr.life);
+  }
+
+  for (const pr of state.enemyProjectiles) {
+    drawFireball(ctx, sx(pr.x), sy(pr.y), pr.angle, Math.min(1, pr.life), 0.85);
   }
 
   for (const fx of state.meleeFx) {
@@ -865,6 +1616,7 @@ function beginRun(charId) {
     els.charSelect?.classList.add("hidden");
     els.gameover.classList.add("hidden");
     syncCamera(null, true);
+    resetGuide();
     updateHud();
     lastTs = performance.now();
     cancelAnimationFrame(raf);
@@ -877,6 +1629,7 @@ function openCharSelect() {
   cancelAnimationFrame(raf);
   els.overlay.classList.add("hidden");
   els.gameover.classList.add("hidden");
+  hideGuide();
   showCharSelect(els.charSelect, els.charGrid, "平台模式 · 选择角色", (id) => {
     beginRun(id);
   });
@@ -938,4 +1691,5 @@ export function stopPlatform() {
   els.overlay?.classList.add("hidden");
   els.gameover?.classList.add("hidden");
   els.charSelect?.classList.add("hidden");
+  hideGuide();
 }

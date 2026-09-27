@@ -14,7 +14,7 @@ export const CHARACTERS = [
   {
     id: "swordsman",
     name: "剑客",
-    desc: "近战挥砍 · 攻速快",
+    desc: "近战挥砍 · 天降剑雨",
     color: "#8b3d14",
     attackType: "melee",
     survivor: {
@@ -80,7 +80,7 @@ export const CHARACTERS = [
   {
     id: "knight",
     name: "骑士",
-    desc: "近战盾击 · 高生命",
+    desc: "近战盾击 · 全屏圣光",
     color: "#5a5a5a",
     attackType: "melee",
     survivor: {
@@ -113,7 +113,7 @@ export const CHARACTERS = [
   {
     id: "archer",
     name: "弓箭手",
-    desc: "远程箭矢 · 射程最远",
+    desc: "远程箭矢 · 全屏箭雨",
     color: "#c45c26",
     attackType: "ranged",
     survivor: {

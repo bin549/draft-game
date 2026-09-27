@@ -33,6 +33,23 @@ html, body {
 }
 
 .hidden { display: none !important; }
+
+html.is-mobile #mobile-gate {
+  display: grid !important;
+}
+
+.mobile-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  place-items: center;
+  padding: 1.25rem;
+  background: rgba(42, 40, 36, 0.72);
+}
+
+.mobile-gate .sub {
+  margin-bottom: 0;
+}
 .visible { display: block; }
 
 /* —— 主菜单 —— */
@@ -106,21 +123,29 @@ html, body {
   margin-top: clamp(1rem, 4vh, 2.5rem);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
+  .menu-content {
+    padding-top: 1.75rem;
+  }
+  .menu-header {
+    margin-bottom: 1.5rem;
+  }
+  .game-grid {
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
+    margin-top: 0.25rem;
+  }
   .card-preview {
-    height: 88px;
+    height: 132px;
   }
   .card-body {
-    padding: 0.65rem 0.55rem 0.75rem;
+    padding: 0.85rem 1rem 1rem;
   }
   .card-body h2 {
-    font-size: 0.95rem;
+    font-size: 1.2rem;
   }
   .card-body p {
-    font-size: 0.68rem;
-  }
-  .card-body .controls {
-    display: none;
+    font-size: 0.9rem;
   }
 }
 
@@ -509,6 +534,27 @@ html, body {
 .hud .btn-back {
   pointer-events: auto;
   margin-left: 0.5rem;
+}
+
+.plat-hint {
+  position: fixed;
+  left: 50%;
+  top: 4.6rem;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: min(92vw, 34rem);
+  padding: 0.45rem 0.95rem;
+  background: rgba(242, 239, 230, 0.95);
+  border: 2px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--shadow);
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  text-align: center;
+  pointer-events: none;
+}
+
+.plat-hint.hidden {
+  display: none;
 }
 
 .stat {

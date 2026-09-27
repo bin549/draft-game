@@ -4,9 +4,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/style.css?v=20260927n" />
+  <script>
+    (function () {
+      var ua = navigator.userAgent || "";
+      var mobile =
+        (navigator.userAgentData && navigator.userAgentData.mobile) ||
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+      if (mobile) document.documentElement.classList.add("is-mobile");
+    })();
+  </script>
 </head>
 <body>
+  <div id="mobile-gate" class="mobile-gate hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-gate-title">
+    <div class="panel">
+      <h2 id="mobile-gate-title">请用电脑游玩</h2>
+      <p class="sub">请在电脑上打开本页，使用键盘和鼠标进行游戏。</p>
+    </div>
+  </div>
+
   <!-- 主菜单 -->
   <div id="menu" class="screen visible">
     <div class="menu-bg" aria-hidden="true"></div>
@@ -20,7 +37,7 @@
           <div class="card-body">
             <div class="card-meta"><span class="mode-num">01</span><span class="tag">生存</span></div>
             <h2>生存模式</h2>
-            <p>选角开局 · 近战/远程分流 · 龙卷风魔法</p>
+            <p>选角开局 · 近战/远程分流 · 全屏魔法</p>
             <p class="controls">WASD 移动 · 鼠标/空格攻击</p>
           </div>
         </button>
@@ -29,7 +46,7 @@
           <div class="card-body">
             <div class="card-meta"><span class="mode-num">02</span><span class="tag shoot">平台</span></div>
             <h2>平台模式</h2>
-            <p>选角开局 · 近战贴身 / 远程射击</p>
+            <p>冲刺晶石 · 移动平台 · 狐火</p>
             <p class="controls">点击进入 · 选角后开始</p>
           </div>
         </button>
@@ -91,12 +108,15 @@
         <span id="ammo-text">∞</span>
       </div>
       <div class="stat time">
+        <span id="plat-dash-text">冲刺 1/1</span>
         <span id="plat-stage-text">关卡 1</span>
         <span id="plat-score-text">分数 0</span>
         <span id="plat-kill-text">击杀 0</span>
       </div>
       <button type="button" class="btn-back" data-back>返回菜单</button>
     </div>
+
+    <div id="plat-hint" class="plat-hint hidden"></div>
 
     <!-- 节奏天国 HUD -->
     <div id="hud-rhythm" class="hud hidden">
@@ -143,7 +163,7 @@
     <div id="overlay-survivor" class="overlay hidden">
       <div class="panel">
         <h2>生存模式</h2>
-        <p class="sub">WASD / 方向键移动 · 鼠标瞄准点击攻击 · 空格也可攻击</p>
+        <p class="sub">WASD / 方向键移动 · 鼠标瞄准点击攻击 · 空格也可攻击 · Q 释放魔法</p>
         <button id="btn-start-survivor" type="button">选择角色</button>
       </div>
     </div>
@@ -170,7 +190,7 @@
     <div id="overlay-platform" class="overlay hidden">
       <div class="panel">
         <h2>平台模式</h2>
-        <p class="sub">A/D 移动 · 空格跳跃（可二段跳） · 鼠标瞄准点击射击</p>
+        <p class="sub">A/D 移动 · 空格 / W / ↑ 跳跃（可从下方跳上平台，空中再跳一次） · Shift 八向冲刺（最多一次，晶石可补充） · 鼠标瞄准点击攻击</p>
         <button id="btn-start-platform" type="button">选择角色</button>
       </div>
     </div>
@@ -233,8 +253,8 @@
     <button type="button" id="btn-magic-tornado" class="magic-card">
       <div class="magic-card-preview" id="magic-preview-tornado"></div>
       <div class="magic-card-meta">
-        <span class="magic-card-name">龙卷风</span>
-        <span class="magic-card-desc">全屏伤害</span>
+        <span class="magic-card-name" id="magic-card-name">龙卷风</span>
+        <span class="magic-card-desc" id="magic-card-desc">全屏伤害</span>
         <span class="magic-card-cd" id="magic-tornado-cd">就绪 · Q</span>
       </div>
     </button>
@@ -275,6 +295,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260325b"></script>
+  <script type="module" src="js/main.js?v=20260927m"></script>
 </body>
 </html>

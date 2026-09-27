@@ -1,4 +1,4 @@
-import { CHARACTERS, drawCharacter } from "./characters.js";
+import { CHARACTERS, drawCharacter } from "./characters.js?v=20260927e";
 
 /** 填充角色选择网格，点击后回调 characterId */
 export function mountCharSelect(container, onPick) {

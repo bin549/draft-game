@@ -6,8 +6,8 @@ import {
   drawTornado,
   drawFireball,
 } from "./draw.js";
-import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js";
-import { showCharSelect } from "./charselect.js";
+import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js?v=20260927e";
+import { showCharSelect } from "./charselect.js?v=20260927e";
 import {
   loadMonsters,
   drawMonster,
@@ -99,6 +99,36 @@ const UPGRADES = [
       s.player.tornadoDamage += 10;
       s.player.tornadoRadius += 16;
       s.player.tornadoDuration += 0.2;
+    },
+  },
+  {
+    id: "arrowrain",
+    title: "箭雨",
+    desc: "强化全屏箭雨：伤害↑、更密、冷却↓",
+    apply: (s) => {
+      s.player.arrowLevel += 1;
+      s.player.arrowCooldown = Math.max(3.5, s.player.arrowCooldown * 0.85);
+      s.player.arrowDamage += 8;
+    },
+  },
+  {
+    id: "swordrain",
+    title: "剑雨",
+    desc: "强化天降剑雨：伤害↑、冷却↓",
+    apply: (s) => {
+      s.player.swordLevel += 1;
+      s.player.swordCooldown = Math.max(3.5, s.player.swordCooldown * 0.85);
+      s.player.swordDamage += 8;
+    },
+  },
+  {
+    id: "holylight",
+    title: "圣光",
+    desc: "强化全屏圣光：伤害↑、冷却↓",
+    apply: (s) => {
+      s.player.holyLevel += 1;
+      s.player.holyCooldown = Math.max(3.5, s.player.holyCooldown * 0.85);
+      s.player.holyDamage += 10;
     },
   },
 ];
@@ -203,6 +233,7 @@ function createState() {
     camera: { x: 0, y: 0 },
     props: buildProps(),
     tornados: [],
+    magicFx: [],
     player: {
       charId: ch.id,
       attackType: ch.attackType,
@@ -238,6 +269,24 @@ function createState() {
       tornadoDamage: 28 + (s.tornadoBonus ? 12 : 0),
       tornadoRadius: 68 + (s.tornadoBonus ? 20 : 0),
       tornadoDuration: 1.6,
+      // 全屏箭雨仅弓箭手可用
+      canArrowRain: ch.id === "archer",
+      arrowLevel: ch.id === "archer" ? 1 : 0,
+      arrowCooldown: 8,
+      arrowCdLeft: 0,
+      arrowDamage: 22,
+      // 天降剑雨仅剑客可用
+      canSwordRain: ch.id === "swordsman",
+      swordLevel: ch.id === "swordsman" ? 1 : 0,
+      swordCooldown: 8,
+      swordCdLeft: 0,
+      swordDamage: 26,
+      // 圣光仅骑士可用
+      canHolyLight: ch.id === "knight",
+      holyLevel: ch.id === "knight" ? 1 : 0,
+      holyCooldown: 8,
+      holyCdLeft: 0,
+      holyDamage: 32,
     },
     enemies: [],
     projectiles: [],
@@ -247,6 +296,7 @@ function createState() {
     particles: [],
     floatTexts: [],
     screenFlash: 0,
+    flashStyle: "storm",
     shake: 0,
     shakeMag: 0,
   };
@@ -282,9 +332,77 @@ function spawnEnemy() {
   });
 }
 
+function drawFallingSword(g, x, y, angle, len) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(angle);
+  g.strokeStyle = "#1a1a1a";
+  g.fillStyle = "#1a1a1a";
+  g.lineWidth = 2;
+  g.lineCap = "round";
+  g.beginPath();
+  g.moveTo(0, -len * 0.55);
+  g.lineTo(0, len * 0.28);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(0, -len * 0.55);
+  g.lineTo(-3.2, -len * 0.32);
+  g.lineTo(3.2, -len * 0.32);
+  g.closePath();
+  g.fill();
+  g.beginPath();
+  g.moveTo(-7, len * 0.28);
+  g.lineTo(7, len * 0.28);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(0, len * 0.28);
+  g.lineTo(0, len * 0.48);
+  g.stroke();
+  g.restore();
+}
+
+function drawHolyBurst(g, x, y, t, radius) {
+  const a = Math.max(0, Math.min(1, t));
+  g.save();
+  g.translate(x, y);
+  g.globalAlpha = 0.28 * a;
+  g.fillStyle = "#f3e2b0";
+  g.beginPath();
+  g.arc(0, 0, radius * (1.15 - a * 0.25), 0, Math.PI * 2);
+  g.fill();
+  g.globalAlpha = 0.9 * a;
+  g.strokeStyle = "#1a1a1a";
+  g.lineWidth = 2;
+  const rays = 12;
+  for (let i = 0; i < rays; i++) {
+    const ang = (i / rays) * Math.PI * 2 - Math.PI / 2;
+    const inner = radius * 0.18;
+    const outer = radius * (0.72 + (i % 2) * 0.22);
+    g.beginPath();
+    g.moveTo(Math.cos(ang) * inner, Math.sin(ang) * inner);
+    g.lineTo(Math.cos(ang) * outer, Math.sin(ang) * outer);
+    g.stroke();
+  }
+  g.globalAlpha = a;
+  g.beginPath();
+  g.arc(0, 0, radius * 0.16, 0, Math.PI * 2);
+  g.stroke();
+  g.restore();
+}
+
+function magicKind() {
+  const p = state?.player;
+  if (!p) return "tornado";
+  if (p.canSwordRain) return "sword";
+  if (p.canHolyLight) return "holy";
+  if (p.canArrowRain) return "arrow";
+  return "tornado";
+}
+
 function paintMagicCard() {
   const host = els.magicPreview;
   if (!host) return;
+  const kind = magicKind();
   let c = host.querySelector("canvas");
   if (!c) {
     c = document.createElement("canvas");
@@ -299,26 +417,62 @@ function paintMagicCard() {
   c.style.height = h + "px";
   const g = c.getContext("2d");
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.fillStyle = "#d8e0e8";
+  const bg = { sword: "#f4efe6", holy: "#f7f1dc", arrow: "#f3ead8", tornado: "#d8e0e8" };
+  g.fillStyle = bg[kind] || "#d8e0e8";
   g.fillRect(0, 0, w, h);
-  drawTornado(g, w * 0.5, h * 0.62, 0.55, 1.2, 1);
+  if (kind === "arrow") {
+    for (let i = 0; i < 7; i++) {
+      const x = w * (0.18 + (i % 4) * 0.2);
+      const y = h * (0.28 + Math.floor(i / 4) * 0.38);
+      drawWeaponProjectile(g, "arrow", x, y, -0.7 + (i % 3) * 0.18, 1);
+    }
+  } else if (kind === "sword") {
+    for (let i = 0; i < 5; i++) {
+      drawFallingSword(g, w * (0.18 + i * 0.16), h * (0.22 + (i % 2) * 0.28), Math.PI + (i - 2) * 0.1, 22);
+    }
+  } else if (kind === "holy") {
+    drawHolyBurst(g, w * 0.5, h * 0.55, 1, Math.min(w, h) * 0.42);
+  } else {
+    drawTornado(g, w * 0.5, h * 0.62, 0.55, 1.2, 1);
+  }
 }
 
 function updateMagicUi() {
   if (!state || !els.magicBtn) return;
   const p = state.player;
-  const canUse = !!p.canTornado && p.tornadoLevel > 0;
-  const ready = canUse && p.tornadoCdLeft <= 0;
+  const spec = activeMagic(p);
+  const canUse = !!spec;
+  const ready = canUse && spec.cd <= 0;
   els.magicBtn.disabled = !ready;
   els.magicBtn.classList.toggle("cooling", canUse && !ready);
   els.magicBtn.classList.toggle("locked", !canUse);
+  const nameEl = document.getElementById("magic-card-name");
+  const descEl = document.getElementById("magic-card-desc");
+  if (nameEl) nameEl.textContent = spec ? spec.name : "魔法";
+  if (descEl) descEl.textContent = spec ? spec.desc : "全屏伤害";
   if (els.magicCd) {
     els.magicCd.textContent = !canUse
-      ? "仅魔法师"
+      ? "不可用"
       : ready
         ? "就绪 · Q"
-        : `${p.tornadoCdLeft.toFixed(1)}s · Q`;
+        : `${spec.cd.toFixed(1)}s · Q`;
   }
+}
+
+function activeMagic(p) {
+  if (p.canSwordRain && p.swordLevel > 0) {
+    return { id: "sword", name: "剑雨", desc: "全屏伤害", cd: p.swordCdLeft };
+  }
+  if (p.canHolyLight && p.holyLevel > 0) {
+    return { id: "holy", name: "圣光", desc: "全屏伤害", cd: p.holyCdLeft };
+  }
+  if (p.canArrowRain && p.arrowLevel > 0) {
+    return { id: "arrow", name: "箭雨", desc: "全屏射击", cd: p.arrowCdLeft };
+  }
+  if (p.canTornado && p.tornadoLevel > 0) {
+    return { id: "tornado", name: "龙卷风", desc: "全屏伤害", cd: p.tornadoCdLeft };
+  }
+  return null;
 }
 
 /** 手动全屏龙卷风：仅魔法师 */
@@ -329,6 +483,7 @@ function castTornadoMagic() {
 
   p.tornadoCdLeft = p.tornadoCooldown;
   state.screenFlash = 0.45;
+  state.flashStyle = "storm";
 
   // 全屏伤害：所有敌人立即结算
   const dmg = p.tornadoDamage * (1 + (p.tornadoLevel - 1) * 0.35);
@@ -369,6 +524,147 @@ function castTornadoMagic() {
       fullscreen: true,
     });
   }
+
+  updateMagicUi();
+  return true;
+}
+
+/** 全屏箭雨：箭矢铺满当前画面，每名敌人只受一次伤害 */
+function castArrowRain() {
+  const p = state.player;
+  if (!running || paused || !p.canArrowRain || p.arrowLevel <= 0) return false;
+  if (p.arrowCdLeft > 0) return false;
+
+  p.arrowCdLeft = p.arrowCooldown;
+  state.screenFlash = 0.28;
+  state.flashStyle = "arrows";
+
+  const viewW = window.innerWidth;
+  const viewH = window.innerHeight;
+  const cam = state.camera;
+  const aim = Math.atan2(mouse.y - viewH * 0.5, mouse.x - viewW * 0.5);
+  const dx = Math.cos(aim);
+  const dy = Math.sin(aim);
+  const px = -dy;
+  const py = dx;
+  const diag = Math.hypot(viewW, viewH);
+  const gap = Math.max(18, 30 - (p.arrowLevel - 1) * 3);
+  const lines = 4 + Math.min(3, p.arrowLevel - 1);
+  const speed = 1280;
+  const dmg = Math.round(p.arrowDamage * (1 + (p.arrowLevel - 1) * 0.22));
+  const sharedHit = new Set();
+  const span = diag * 0.62;
+
+  for (let line = 0; line < lines; line++) {
+    const back = diag * 0.48 + line * gap * 0.9;
+    const originX = cam.x + viewW * 0.5 - dx * back;
+    const originY = cam.y + viewH * 0.5 - dy * back;
+    for (let t = -span; t <= span; t += gap) {
+      state.projectiles.push({
+        x: originX + px * t,
+        y: originY + py * t,
+        vx: dx * speed,
+        vy: dy * speed,
+        angle: aim,
+        damage: dmg,
+        pierceLeft: 99,
+        life: (diag * 1.15) / speed,
+        weapon: "arrow",
+        hit: sharedHit,
+      });
+    }
+  }
+
+  updateMagicUi();
+  return true;
+}
+
+function castMagic() {
+  if (!state?.player) return false;
+  const p = state.player;
+  if (p.canSwordRain) return castSwordRain();
+  if (p.canHolyLight) return castHolyLight();
+  if (p.canArrowRain) return castArrowRain();
+  return castTornadoMagic();
+}
+
+function hurtAllEnemies(dmg, color) {
+  const p = state.player;
+  const doomed = [];
+  for (const e of state.enemies) {
+    e.hp -= dmg;
+    e.hurt = 0.35;
+    const ang = Math.atan2(e.y - p.y, e.x - p.x);
+    e.x += Math.cos(ang) * 16;
+    e.y += Math.sin(ang) * 10;
+    addParticle(e.x, e.y, color);
+    if (e.hp <= 0) doomed.push(e);
+  }
+  for (const e of doomed) {
+    const idx = state.enemies.indexOf(e);
+    if (idx >= 0) killEnemy(e, idx);
+  }
+}
+
+/** 天降剑雨：剑客，伤害场上全部敌人 */
+function castSwordRain() {
+  const p = state.player;
+  if (!running || paused || !p.canSwordRain || p.swordLevel <= 0) return false;
+  if (p.swordCdLeft > 0) return false;
+
+  p.swordCdLeft = p.swordCooldown;
+  state.screenFlash = 0.32;
+  state.flashStyle = "swords";
+  triggerShake(7, 0.2);
+
+  const dmg = Math.round(p.swordDamage * (1 + (p.swordLevel - 1) * 0.28));
+  hurtAllEnemies(dmg, "#1a1a1a");
+
+  const cam = state.camera;
+  const viewW = window.innerWidth;
+  const viewH = window.innerHeight;
+  const count = 58 + p.swordLevel * 14;
+  for (let i = 0; i < count; i++) {
+    state.magicFx.push({
+      kind: "sword",
+      x: cam.x - 40 + Math.random() * (viewW + 80),
+      y: cam.y - 80 + Math.random() * (viewH + 40),
+      vx: (Math.random() - 0.5) * 30,
+      vy: 520 + Math.random() * 280,
+      angle: Math.PI + (Math.random() - 0.5) * 0.45,
+      life: 0.75 + Math.random() * 0.2,
+      maxLife: 0.95,
+      len: 34 + Math.random() * 20,
+    });
+  }
+
+  updateMagicUi();
+  return true;
+}
+
+/** 圣光：骑士，伤害场上全部敌人 */
+function castHolyLight() {
+  const p = state.player;
+  if (!running || paused || !p.canHolyLight || p.holyLevel <= 0) return false;
+  if (p.holyCdLeft > 0) return false;
+
+  p.holyCdLeft = p.holyCooldown;
+  state.screenFlash = 0.55;
+  state.flashStyle = "holy";
+  triggerShake(6, 0.22);
+
+  const dmg = Math.round(p.holyDamage * (1 + (p.holyLevel - 1) * 0.28));
+  hurtAllEnemies(dmg, "#c4a15a");
+
+  const cam = state.camera;
+  state.magicFx.push({
+    kind: "light",
+    x: cam.x + window.innerWidth * 0.5,
+    y: cam.y + window.innerHeight * 0.46,
+    life: 0.7,
+    maxLife: 0.7,
+    radius: 80 + p.holyLevel * 18,
+  });
 
   updateMagicUi();
   return true;
@@ -511,6 +807,9 @@ function addParticle(x, y, color) {
 function pickUpgrades() {
   const pool = UPGRADES.filter((u) => {
     if (u.id === "tornado" && !state.player.canTornado) return false;
+    if (u.id === "arrowrain" && !state.player.canArrowRain) return false;
+    if (u.id === "swordrain" && !state.player.canSwordRain) return false;
+    if (u.id === "holylight" && !state.player.canHolyLight) return false;
     return true;
   });
   const picks = [];
@@ -631,12 +930,23 @@ function update(dt) {
     fireProjectiles();
   }
 
-  // 龙卷风魔法冷却
-  if (p.tornadoCdLeft > 0) {
-    p.tornadoCdLeft = Math.max(0, p.tornadoCdLeft - dt);
-    updateMagicUi();
-  }
+  const magicCooling =
+    p.tornadoCdLeft > 0 || p.arrowCdLeft > 0 || p.swordCdLeft > 0 || p.holyCdLeft > 0;
+  if (p.tornadoCdLeft > 0) p.tornadoCdLeft = Math.max(0, p.tornadoCdLeft - dt);
+  if (p.arrowCdLeft > 0) p.arrowCdLeft = Math.max(0, p.arrowCdLeft - dt);
+  if (p.swordCdLeft > 0) p.swordCdLeft = Math.max(0, p.swordCdLeft - dt);
+  if (p.holyCdLeft > 0) p.holyCdLeft = Math.max(0, p.holyCdLeft - dt);
+  if (magicCooling) updateMagicUi();
   if (state.screenFlash > 0) state.screenFlash -= dt;
+  for (let i = state.magicFx.length - 1; i >= 0; i--) {
+    const fx = state.magicFx[i];
+    fx.life -= dt;
+    if (fx.kind === "sword") {
+      fx.x += fx.vx * dt;
+      fx.y += fx.vy * dt;
+    }
+    if (fx.life <= 0) state.magicFx.splice(i, 1);
+  }
   if (state.shake > 0) {
     state.shake -= dt;
     if (state.shake <= 0) {
@@ -978,18 +1288,60 @@ function render() {
     ctx.globalAlpha = 1;
   }
 
+  for (const fx of state.magicFx) {
+    const fade = Math.max(0, fx.life / fx.maxLife);
+    if (fx.kind === "sword") {
+      ctx.globalAlpha = Math.min(1, fade * 1.3);
+      drawFallingSword(ctx, sx(fx.x), sy(fx.y), fx.angle, fx.len);
+      ctx.globalAlpha = 1;
+    } else if (fx.kind === "light") {
+      drawHolyBurst(ctx, sx(fx.x), sy(fx.y), fade, fx.radius * (1.4 + (1 - fade) * 2.2));
+    }
+  }
+
   // 全屏魔法闪光
   if (state.screenFlash > 0) {
     const a = Math.min(0.45, state.screenFlash * 1.2);
-    ctx.fillStyle = `rgba(106,122,136,${a})`;
-    ctx.fillRect(0, 0, viewW, viewH);
-    ctx.strokeStyle = `rgba(26,26,26,${a * 0.8})`;
-    ctx.lineWidth = 3;
-    for (let i = 0; i < 3; i++) {
-      const r = 40 + (0.45 - state.screenFlash) * 220 + i * 50;
+    const style = state.flashStyle;
+    if (style === "arrows") {
+      ctx.fillStyle = `rgba(196,92,38,${a * 0.45})`;
+      ctx.fillRect(0, 0, viewW, viewH);
+      ctx.strokeStyle = `rgba(26,26,26,${a})`;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(viewW / 2, viewH / 2, r, 0, Math.PI * 2);
+      for (let x = -viewH; x < viewW + viewH; x += 46) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + viewH * 0.35, viewH);
+      }
       ctx.stroke();
+    } else if (style === "swords") {
+      ctx.fillStyle = `rgba(26,26,26,${a * 0.16})`;
+      ctx.fillRect(0, 0, viewW, viewH);
+    } else if (style === "holy") {
+      ctx.fillStyle = `rgba(243,226,176,${a * 0.85})`;
+      ctx.fillRect(0, 0, viewW, viewH);
+      ctx.strokeStyle = `rgba(26,26,26,${a})`;
+      ctx.lineWidth = 2;
+      const cx = viewW * 0.5;
+      const cy = viewH * 0.46;
+      for (let i = 0; i < 16; i++) {
+        const ang = (i / 16) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(ang) * viewW, cy + Math.sin(ang) * viewH);
+        ctx.stroke();
+      }
+    } else {
+      ctx.fillStyle = `rgba(106,122,136,${a})`;
+      ctx.fillRect(0, 0, viewW, viewH);
+      ctx.strokeStyle = `rgba(26,26,26,${a * 0.8})`;
+      ctx.lineWidth = 3;
+      for (let i = 0; i < 3; i++) {
+        const r = 40 + (0.45 - state.screenFlash) * 220 + i * 50;
+        ctx.beginPath();
+        ctx.arc(viewW / 2, viewH / 2, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
   }
 
@@ -1078,7 +1430,7 @@ export function startSurvivor(options) {
     }
     if (e.code === "KeyQ") {
       e.preventDefault();
-      castTornadoMagic();
+      castMagic();
     }
   };
   onKeyUp = (e) => {
@@ -1109,7 +1461,7 @@ export function startSurvivor(options) {
   window.addEventListener("blur", onMouseUp);
 
   if (els.magicBtn) {
-    els.magicBtn.onclick = () => castTornadoMagic();
+    els.magicBtn.onclick = () => castMagic();
   }
 
   els.btnStart.onclick = openCharSelect;

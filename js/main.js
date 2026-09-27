@@ -1,9 +1,9 @@
-import { startSurvivor, stopSurvivor } from "./survivor.js";
-import { startPlatform, stopPlatform } from "./platform.js";
+import { startSurvivor, stopSurvivor } from "./survivor.js?v=20260927e";
+import { startPlatform, stopPlatform } from "./platform.js?v=20260927l";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
-import { drawCharacter } from "./characters.js";
+import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
 
 const menu = document.getElementById("menu");
@@ -43,6 +43,7 @@ function stopActive() {
 }
 
 function enterMode(mode) {
+  if (document.documentElement.classList.contains("is-mobile")) return;
   stopActive();
   hideAllModeUi();
   menu.classList.add("hidden");
@@ -91,7 +92,9 @@ function enterMode(mode) {
         hpText: document.getElementById("plat-hp-text"),
         scoreText: document.getElementById("plat-score-text"),
         killText: document.getElementById("plat-kill-text"),
+        hint: document.getElementById("plat-hint"),
         stageText: document.getElementById("plat-stage-text"),
+        dashText: document.getElementById("plat-dash-text"),
         ammoText: document.getElementById("ammo-text"),
         btnStart: document.getElementById("btn-start-platform"),
         btnRestart: document.getElementById("btn-restart-platform"),
@@ -200,6 +203,30 @@ function drawMenuPreviews() {
     ctx.fill();
     ctx.stroke();
 
+    ctx.fillStyle = "#1a1a1a";
+    const spikeBase = h * 0.72;
+    for (let i = 0; i < 4; i++) {
+      const x0 = w * 0.58 + i * 11;
+      ctx.beginPath();
+      ctx.moveTo(x0, spikeBase);
+      ctx.lineTo(x0 + 5.5, spikeBase - 13);
+      ctx.lineTo(x0 + 11, spikeBase);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#d7cebf";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.72, h * 0.3);
+    ctx.lineTo(w * 0.76, h * 0.22);
+    ctx.lineTo(w * 0.84, h * 0.24);
+    ctx.lineTo(w * 0.86, h * 0.32);
+    ctx.lineTo(w * 0.8, h * 0.36);
+    ctx.lineTo(w * 0.73, h * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
     drawCharacter(ctx, "swordsman", w * 0.22, h * 0.58, 1, 0.2);
     drawCharacter(ctx, "mage", w * 0.42, h * 0.58, 1, 0.3);
     drawEyeball(ctx, w * 0.72, h * 0.38, 0.5, 0.8, 0);
@@ -287,6 +314,11 @@ document.querySelectorAll("[data-back]").forEach((btn) => {
 window.addEventListener("resize", () => {
   if (!menu.classList.contains("hidden")) drawMenuPreviews();
 });
+
+if (document.documentElement.classList.contains("is-mobile")) {
+  menu.setAttribute("inert", "");
+  stage.setAttribute("inert", "");
+}
 
 loadMonsters(); // 预加载局内位图怪，菜单预览仍用矢量
 drawMenuPreviews();
