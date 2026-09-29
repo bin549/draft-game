@@ -134,13 +134,8 @@ function makePlayer(kind, x, y) {
 }
 
 /** 森林神庙关卡 —— 单屏竖向迷宫（可完整通关） */
-function buildLevel(stage) {
-  const W = 1100;
-  const H = 720;
-  const T = WALL;
-  const cy = (platY) => platY - BODY_H / 2;
-  // 闸门只填平台缝，高度略小于层距，避免穿进上层
-  const gate = (id, x, platY, h = 72, fromButton = null) => ({
+function gate(id, x, platY, h = 72, fromButton = null) {
+  return {
     id,
     x,
     y: platY - h,
@@ -150,251 +145,255 @@ function buildLevel(stage) {
     openH: 6,
     open: false,
     ...(fromButton ? { fromButton } : {}),
-  });
+  };
+}
 
+/** 从地面实心中挖掉陷阱占用的横段，避免砖面与池子重叠 */
+function carveLiquidsFromSolids(solids, liquids) {
+  let out = solids.map((s) => ({ ...s }));
+  for (const liq of liquids) {
+    const lx0 = liq.x;
+    const lx1 = liq.x + liq.w;
+    const ly0 = liq.y - 2;
+    const ly1 = liq.y + liq.h + 2;
+    const next = [];
+    for (const s of out) {
+      const overlaps =
+        s.x < lx1 && s.x + s.w > lx0 && s.y < ly1 && s.y + s.h > ly0;
+      if (!overlaps) {
+        next.push(s);
+        continue;
+      }
+      // 左右保留，中间挖空（陷阱区）
+      const leftW = lx0 - s.x;
+      if (leftW > 6) next.push({ x: s.x, y: s.y, w: leftW, h: s.h });
+      const rightX = lx1;
+      const rightW = s.x + s.w - rightX;
+      if (rightW > 6) next.push({ x: rightX, y: s.y, w: rightW, h: s.h });
+    }
+    out = next;
+  }
+  return out;
+}
+
+function buildLevel(stage) {
+  const W = 1100;
+  const H = 720;
+  const T = WALL;
+  const cy = (platY) => platY - BODY_H / 2;
+  // 闸门只填平台缝，高度略小于层距，避免穿进上层
+  // （gate 已提取到外层）
+
+  let level;
   if (stage === 1) {
-    // 教学关：无闸门死路 · 顶出生 · 沿本色池下到底门
-    return {
+    // 教学关：左右竖井下落 · 本色桥只用于横穿 · 池子挖空地面
+    level = {
       width: W,
       height: H,
       title: "逃亡 · 入门",
-      hint: "冰走水路 · 火走火路 · 跳过绿泥 · 齐进双门",
+      hint: "内侧缺口下落 · 齐进双门即可通关",
       spawn: { ice: [120, cy(140)], fire: [980, cy(140)] },
       solids: [
         { x: 0, y: 0, w: W, h: T },
         { x: 0, y: H - T, w: W, h: T },
         { x: 0, y: 0, w: T, h: H },
         { x: W - T, y: 0, w: T, h: H },
-        { x: T, y: 140, w: 200, h: T },
-        { x: 320, y: 140, w: 180, h: T },
-        { x: 580, y: 140, w: 180, h: T },
-        { x: 840, y: 140, w: W - T - 840, h: T },
-        { x: T, y: 260, w: 240, h: T },
-        { x: 360, y: 260, w: 200, h: T },
-        { x: 640, y: 260, w: 200, h: T },
-        { x: 920, y: 260, w: W - T - 920, h: T },
-        { x: T, y: 380, w: 280, h: T },
-        { x: 400, y: 380, w: 300, h: T },
-        { x: 780, y: 380, w: W - T - 780, h: T },
-        { x: T, y: 500, w: 300, h: T },
-        { x: 400, y: 500, w: 300, h: T },
-        { x: 780, y: 500, w: W - T - 780, h: T },
-        { x: T, y: 640, w: 220, h: T },
-        { x: 420, y: 640, w: 260, h: T },
-        { x: 860, y: 640, w: W - T - 860, h: T },
-        { x: T, y: 200, w: 70, h: T },
-        { x: T, y: 320, w: 70, h: T },
-        { x: T, y: 440, w: 70, h: T },
-        { x: T, y: 570, w: 70, h: T },
-        { x: W - T - 70, y: 200, w: 70, h: T },
-        { x: W - T - 70, y: 320, w: 70, h: T },
-        { x: W - T - 70, y: 440, w: 70, h: T },
-        { x: W - T - 70, y: 570, w: 70, h: T },
+        { x: T, y: 140, w: 170, h: T },
+        { x: 300, y: 140, w: 500, h: T },
+        { x: 900, y: 140, w: W - T - 900, h: T },
+        { x: T, y: 270, w: 264, h: T },
+        { x: 380, y: 270, w: 340, h: T },
+        { x: 820, y: 270, w: W - T - 820, h: T },
+        { x: T, y: 400, w: 284, h: T },
+        { x: 400, y: 400, w: 300, h: T },
+        { x: 800, y: 400, w: W - T - 800, h: T },
+        { x: T, y: 530, w: 264, h: T },
+        { x: 380, y: 530, w: 340, h: T },
+        { x: 820, y: 530, w: W - T - 820, h: T },
+        { x: T, y: 660, w: 220, h: T },
+        { x: 420, y: 660, w: 260, h: T },
+        { x: 860, y: 660, w: W - T - 860, h: T },
       ],
       liquids: [
-        { type: "lava", x: 236, y: 144, w: 84, h: 24 },
-        { type: "goo", x: 500, y: 144, w: 70, h: 24 },
-        { type: "water", x: 760, y: 144, w: 80, h: 24 },
-        { type: "lava", x: 276, y: 264, w: 84, h: 24 },
-        { type: "water", x: 560, y: 264, w: 80, h: 24 },
-        { type: "water", x: 316, y: 384, w: 84, h: 24 },
-        { type: "lava", x: 700, y: 384, w: 80, h: 24 },
-        { type: "lava", x: 300, y: 504, w: 100, h: 24 },
-        { type: "water", x: 700, y: 504, w: 80, h: 24 },
-        { type: "lava", x: 256, y: 644, w: 164, h: 28 },
-        { type: "water", x: 680, y: 644, w: 180, h: 28 },
+        { type: "water", x: 340, y: 140, w: 70, h: T },
+        { type: "goo", x: 520, y: 140, w: 70, h: T },
+        { type: "lava", x: 690, y: 140, w: 70, h: T },
+        { type: "goo", x: 500, y: 270, w: 60, h: T },
+        { type: "water", x: 440, y: 400, w: 70, h: T },
+        { type: "lava", x: 580, y: 400, w: 70, h: T },
+        { type: "goo", x: 500, y: 530, w: 60, h: T },
+        { type: "lava", x: 256, y: 660, w: 164, h: T },
+        { type: "water", x: 680, y: 660, w: 180, h: T },
       ],
       gems: [
-        { type: "ice", x: 130, y: 100, got: false },
+        // 全部放在侧道可触达处
+        { type: "ice", x: 120, y: 100, got: false },
         { type: "fire", x: 970, y: 100, got: false },
-        { type: "ice", x: 160, y: 220, got: false },
-        { type: "fire", x: 980, y: 220, got: false },
-        { type: "ice", x: 450, y: 340, got: false },
-        { type: "fire", x: 650, y: 340, got: false },
-        { type: "ice", x: 480, y: 460, got: false },
-        { type: "fire", x: 560, y: 460, got: false },
-        { type: "ice", x: 500, y: 600, got: false },
-        { type: "fire", x: 560, y: 600, got: false },
+        { type: "ice", x: 150, y: 230, got: false },
+        { type: "fire", x: 960, y: 230, got: false },
+        { type: "ice", x: 160, y: 360, got: false },
+        { type: "fire", x: 940, y: 360, got: false },
+        { type: "ice", x: 150, y: 490, got: false },
+        { type: "fire", x: 960, y: 490, got: false },
+        { type: "ice", x: 140, y: 620, got: false },
+        { type: "fire", x: 950, y: 620, got: false },
       ],
       doors: [
-        { type: "fire", x: 70, y: 640, w: 56, h: 72 },
-        { type: "ice", x: 960, y: 640, w: 56, h: 72 },
+        { type: "fire", x: 70, y: 660, w: 64, h: 78 },
+        { type: "ice", x: 950, y: 660, w: 64, h: 78 },
       ],
       levers: [],
       gates: [],
       buttons: [],
       boxes: [],
       vines: [
-        [80, 140], [400, 140], [900, 140], [150, 260], [800, 260],
-        [200, 380], [500, 500], [120, 640], [950, 640],
+        [80, 140], [500, 140], [940, 140], [150, 270], [900, 270],
+        [180, 400], [500, 530], [120, 660], [950, 660],
       ],
     };
-  }
-
-  if (stage === 2) {
-    return {
+  } else if (stage === 2) {
+    level = {
       width: W,
       height: H,
       title: "逃亡 · 机关",
-      hint: "拉杆开闸 · 推箱压钮 · 齐进双门",
-      spawn: { ice: [110, cy(140)], fire: [990, cy(140)] },
+      hint: "内侧缺口下落 · 拉杆开闸 · 齐进双门即可通关",
+      spawn: { ice: [120, cy(140)], fire: [980, cy(140)] },
       solids: [
         { x: 0, y: 0, w: W, h: T },
         { x: 0, y: H - T, w: W, h: T },
         { x: 0, y: 0, w: T, h: H },
         { x: W - T, y: 0, w: T, h: H },
-        { x: T, y: 140, w: 220, h: T },
-        { x: 340, y: 140, w: 180, h: T },
-        { x: 600, y: 140, w: 180, h: T },
-        { x: 860, y: 140, w: W - T - 860, h: T },
-        { x: T, y: 260, w: 260, h: T },
-        { x: 380, y: 260, w: 340, h: T },
-        { x: 800, y: 260, w: W - T - 800, h: T },
-        { x: T, y: 390, w: 400, h: T },
-        { x: 500, y: 390, w: 260, h: T },
-        { x: 840, y: 390, w: W - T - 840, h: T },
-        { x: T, y: 520, w: 320, h: T },
-        { x: 420, y: 520, w: 280, h: T },
-        { x: 800, y: 520, w: W - T - 800, h: T },
-        { x: T, y: 650, w: 220, h: T },
-        { x: 420, y: 650, w: 260, h: T },
-        { x: 860, y: 650, w: W - T - 860, h: T },
-        { x: T, y: 200, w: 70, h: T },
-        { x: T, y: 325, w: 70, h: T },
-        { x: T, y: 455, w: 70, h: T },
-        { x: T, y: 585, w: 70, h: T },
-        { x: W - T - 70, y: 200, w: 70, h: T },
-        { x: W - T - 70, y: 325, w: 70, h: T },
-        { x: W - T - 70, y: 455, w: 70, h: T },
-        { x: W - T - 70, y: 585, w: 70, h: T },
+        { x: T, y: 140, w: 170, h: T },
+        { x: 300, y: 140, w: 500, h: T },
+        { x: 900, y: 140, w: W - T - 900, h: T },
+        { x: T, y: 270, w: 264, h: T },
+        { x: 380, y: 270, w: 340, h: T },
+        { x: 820, y: 270, w: W - T - 820, h: T },
+        { x: T, y: 400, w: 360, h: T },
+        { x: 500, y: 400, w: 240, h: T },
+        { x: 840, y: 400, w: W - T - 840, h: T },
+        { x: T, y: 530, w: 300, h: T },
+        { x: 420, y: 530, w: 280, h: T },
+        { x: 800, y: 530, w: W - T - 800, h: T },
+        { x: T, y: 660, w: 220, h: T },
+        { x: 420, y: 660, w: 260, h: T },
+        { x: 860, y: 660, w: W - T - 860, h: T },
       ],
       liquids: [
-        { type: "lava", x: 256, y: 144, w: 84, h: 24 },
-        { type: "goo", x: 520, y: 144, w: 70, h: 24 },
-        { type: "water", x: 780, y: 144, w: 80, h: 24 },
-        { type: "water", x: 296, y: 264, w: 84, h: 24 },
-        { type: "lava", x: 720, y: 264, w: 80, h: 24 },
-        { type: "lava", x: 320, y: 524, w: 100, h: 24 },
-        { type: "water", x: 700, y: 524, w: 100, h: 24 },
-        { type: "lava", x: 256, y: 654, w: 164, h: 28 },
-        { type: "water", x: 680, y: 654, w: 180, h: 28 },
+        { type: "goo", x: 520, y: 140, w: 70, h: T },
+        { type: "lava", x: 360, y: 530, w: 60, h: T },
+        { type: "water", x: 700, y: 530, w: 100, h: T },
+        { type: "lava", x: 256, y: 660, w: 164, h: T },
+        { type: "water", x: 680, y: 660, w: 180, h: T },
       ],
       gems: [
         { type: "ice", x: 120, y: 100, got: false },
-        { type: "fire", x: 980, y: 100, got: false },
-        { type: "ice", x: 450, y: 220, got: false },
-        { type: "fire", x: 650, y: 220, got: false },
-        { type: "ice", x: 180, y: 350, got: false },
-        { type: "fire", x: 920, y: 350, got: false },
-        { type: "ice", x: 500, y: 480, got: false },
-        { type: "fire", x: 560, y: 480, got: false },
-        { type: "ice", x: 500, y: 610, got: false },
-        { type: "fire", x: 560, y: 610, got: false },
+        { type: "fire", x: 970, y: 100, got: false },
+        { type: "ice", x: 150, y: 230, got: false },
+        { type: "fire", x: 960, y: 230, got: false },
+        { type: "ice", x: 180, y: 360, got: false },
+        { type: "fire", x: 920, y: 360, got: false },
+        { type: "ice", x: 160, y: 490, got: false },
+        { type: "fire", x: 940, y: 490, got: false },
+        { type: "ice", x: 140, y: 620, got: false },
+        { type: "fire", x: 950, y: 620, got: false },
       ],
       doors: [
-        { type: "fire", x: 70, y: 650, w: 56, h: 72 },
-        { type: "ice", x: 960, y: 650, w: 56, h: 72 },
+        { type: "fire", x: 70, y: 660, w: 64, h: 78 },
+        { type: "ice", x: 950, y: 660, w: 64, h: 78 },
       ],
       levers: [
-        { id: "L1", x: 160, y: 390, on: false, gate: "G1", color: "#5a9a4a" },
+        { id: "L1", x: 160, y: 400, on: false, gate: "G1", color: "#5a9a4a" },
       ],
       gates: [
-        gate("G1", 458, 390, 70),
-        gate("G2", 740, 520, 70, "B1"),
+        gate("G1", 458, 400, 70),
+        gate("G2", 740, 530, 70, "B1"),
       ],
       buttons: [
-        { id: "B1", x: 860, y: 520 - 10, w: 48, h: 10, pressed: false, gate: "G2" },
+        { id: "B1", x: 880, y: 530 - 10, w: 48, h: 10, pressed: false, gate: "G2" },
       ],
-      boxes: [{ x: 920, y: 520 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
+      boxes: [{ x: 940, y: 530 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
       vines: [
-        [90, 140], [450, 140], [900, 140], [200, 260], [850, 260],
-        [200, 390], [500, 520], [120, 650], [950, 650],
+        [90, 140], [500, 140], [940, 140], [150, 270], [900, 270],
+        [200, 400], [500, 530], [120, 660], [950, 660],
+      ],
+    };
+  } else {
+    level = {
+      width: W,
+      height: H,
+      title: "逃亡 · 试炼",
+      hint: "内侧缺口下落 · 双拉杆 + 推箱 · 齐进双门即可通关",
+      spawn: { ice: [120, cy(140)], fire: [980, cy(140)] },
+      solids: [
+        { x: 0, y: 0, w: W, h: T },
+        { x: 0, y: H - T, w: W, h: T },
+        { x: 0, y: 0, w: T, h: H },
+        { x: W - T, y: 0, w: T, h: H },
+        { x: T, y: 140, w: 170, h: T },
+        { x: 300, y: 140, w: 500, h: T },
+        { x: 900, y: 140, w: W - T - 900, h: T },
+        { x: T, y: 270, w: 264, h: T },
+        { x: 380, y: 270, w: 340, h: T },
+        { x: 820, y: 270, w: W - T - 820, h: T },
+        { x: T, y: 400, w: 300, h: T },
+        { x: 420, y: 400, w: 260, h: T },
+        { x: 800, y: 400, w: W - T - 800, h: T },
+        { x: T, y: 530, w: 300, h: T },
+        { x: 420, y: 530, w: 280, h: T },
+        { x: 800, y: 530, w: W - T - 800, h: T },
+        { x: T, y: 660, w: 220, h: T },
+        { x: 420, y: 660, w: 260, h: T },
+        { x: 860, y: 660, w: W - T - 860, h: T },
+      ],
+      liquids: [
+        { type: "goo", x: 520, y: 140, w: 70, h: T },
+        { type: "water", x: 336, y: 400, w: 84, h: T },
+        { type: "lava", x: 680, y: 400, w: 120, h: T },
+        { type: "goo", x: 500, y: 400, w: 60, h: T },
+        { type: "lava", x: 320, y: 530, w: 100, h: T },
+        { type: "water", x: 700, y: 530, w: 100, h: T },
+        { type: "lava", x: 256, y: 660, w: 164, h: T },
+        { type: "water", x: 680, y: 660, w: 180, h: T },
+      ],
+      gems: [
+        { type: "ice", x: 120, y: 100, got: false },
+        { type: "fire", x: 970, y: 100, got: false },
+        { type: "ice", x: 150, y: 230, got: false },
+        { type: "fire", x: 960, y: 230, got: false },
+        { type: "ice", x: 180, y: 360, got: false },
+        { type: "fire", x: 920, y: 360, got: false },
+        { type: "ice", x: 160, y: 490, got: false },
+        { type: "fire", x: 940, y: 490, got: false },
+        { type: "ice", x: 140, y: 620, got: false },
+        { type: "fire", x: 950, y: 620, got: false },
+      ],
+      doors: [
+        { type: "fire", x: 70, y: 660, w: 64, h: 78 },
+        { type: "ice", x: 950, y: 660, w: 64, h: 78 },
+      ],
+      levers: [
+        { id: "L1", x: 160, y: 400, on: false, gate: "G1", color: "#5a9a4a" },
+        { id: "L2", x: 920, y: 400, on: false, gate: "G2", color: "#a45a9a" },
+      ],
+      gates: [
+        gate("G1", 380, 270, 70),
+        gate("G2", 740, 400, 70),
+        gate("G3", 740, 530, 70, "B1"),
+      ],
+      buttons: [
+        { id: "B1", x: 880, y: 530 - 10, w: 48, h: 10, pressed: false, gate: "G3" },
+      ],
+      boxes: [{ x: 940, y: 530 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
+      vines: [
+        [80, 140], [500, 140], [940, 140], [150, 270], [900, 270],
+        [200, 400], [500, 530], [120, 660], [950, 660],
       ],
     };
   }
 
-  return {
-    width: W,
-    height: H,
-    title: "逃亡 · 试炼",
-    hint: "双拉杆 + 推箱 · 绿泥慎行 · 齐进双门",
-    spawn: { ice: [110, cy(130)], fire: [990, cy(130)] },
-    solids: [
-      { x: 0, y: 0, w: W, h: T },
-      { x: 0, y: H - T, w: W, h: T },
-      { x: 0, y: 0, w: T, h: H },
-      { x: W - T, y: 0, w: T, h: H },
-      { x: T, y: 130, w: 200, h: T },
-      { x: 320, y: 130, w: 160, h: T },
-      { x: 560, y: 130, w: 160, h: T },
-      { x: 800, y: 130, w: W - T - 800, h: T },
-      { x: T, y: 250, w: 280, h: T },
-      { x: 400, y: 250, w: 300, h: T },
-      { x: 800, y: 250, w: W - T - 800, h: T },
-      { x: T, y: 380, w: 340, h: T },
-      { x: 460, y: 380, w: 220, h: T },
-      { x: 800, y: 380, w: W - T - 800, h: T },
-      { x: T, y: 510, w: 320, h: T },
-      { x: 440, y: 510, w: 260, h: T },
-      { x: 800, y: 510, w: W - T - 800, h: T },
-      { x: T, y: 640, w: 220, h: T },
-      { x: 420, y: 640, w: 260, h: T },
-      { x: 860, y: 640, w: W - T - 860, h: T },
-      { x: T, y: 190, w: 70, h: T },
-      { x: T, y: 315, w: 70, h: T },
-      { x: T, y: 445, w: 70, h: T },
-      { x: T, y: 575, w: 70, h: T },
-      { x: W - T - 70, y: 190, w: 70, h: T },
-      { x: W - T - 70, y: 315, w: 70, h: T },
-      { x: W - T - 70, y: 445, w: 70, h: T },
-      { x: W - T - 70, y: 575, w: 70, h: T },
-    ],
-    liquids: [
-      { type: "lava", x: 236, y: 134, w: 84, h: 24 },
-      { type: "goo", x: 480, y: 134, w: 70, h: 24 },
-      { type: "water", x: 720, y: 134, w: 80, h: 24 },
-      { type: "water", x: 316, y: 254, w: 84, h: 24 },
-      { type: "lava", x: 700, y: 254, w: 100, h: 24 },
-      { type: "goo", x: 680, y: 384, w: 70, h: 24 },
-      { type: "lava", x: 320, y: 514, w: 120, h: 24 },
-      { type: "water", x: 700, y: 514, w: 100, h: 24 },
-      { type: "lava", x: 256, y: 644, w: 164, h: 28 },
-      { type: "water", x: 680, y: 644, w: 180, h: 28 },
-    ],
-    gems: [
-      { type: "ice", x: 120, y: 90, got: false },
-      { type: "fire", x: 980, y: 90, got: false },
-      { type: "ice", x: 450, y: 210, got: false },
-      { type: "fire", x: 650, y: 210, got: false },
-      { type: "ice", x: 180, y: 340, got: false },
-      { type: "fire", x: 920, y: 340, got: false },
-      { type: "ice", x: 500, y: 470, got: false },
-      { type: "fire", x: 560, y: 470, got: false },
-      { type: "ice", x: 500, y: 600, got: false },
-      { type: "fire", x: 560, y: 600, got: false },
-    ],
-    doors: [
-      { type: "fire", x: 70, y: 640, w: 56, h: 72 },
-      { type: "ice", x: 960, y: 640, w: 56, h: 72 },
-    ],
-    levers: [
-      { id: "L1", x: 160, y: 380, on: false, gate: "G1", color: "#5a9a4a" },
-      { id: "L2", x: 920, y: 380, on: false, gate: "G2", color: "#a45a9a" },
-    ],
-    gates: [
-      gate("G1", 360, 250, 70),
-      gate("G2", 760, 380, 70),
-      gate("G3", 740, 510, 70, "B1"),
-    ],
-    buttons: [
-      { id: "B1", x: 860, y: 510 - 10, w: 48, h: 10, pressed: false, gate: "G3" },
-    ],
-    boxes: [{ x: 920, y: 510 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
-    vines: [
-      [80, 130], [400, 130], [880, 130], [150, 250], [850, 250],
-      [200, 380], [500, 510], [120, 640], [950, 640],
-    ],
-  };
+  level.solids = carveLiquidsFromSolids(level.solids, level.liquids);
+  return level;
 }
 
 function initState(stage = 1) {
@@ -406,6 +405,7 @@ function initState(stage = 1) {
     if (!g.open) g.y = g.yBase;
     else g.y = g.yBase + (g.closedH - g.openH);
   }
+  for (const d of level.doors) d.openT = 0;
 
   state = {
     stage,
@@ -730,7 +730,12 @@ function updatePlayer(dt, p) {
   p.atDoor = false;
   for (const door of state.level.doors) {
     if (door.type !== p.kind) continue;
-    if (rectOverlap(left, top, p.w, p.h, door.x, door.y - door.h, door.w, door.h)) {
+    // 门判定略放宽：脚下平台附近整扇门框均可
+    const dx = door.x - 10;
+    const dy = door.y - door.h - 8;
+    const dw = door.w + 20;
+    const dh = door.h + 16;
+    if (rectOverlap(left, top, p.w, p.h, dx, dy, dw, dh)) {
       p.atDoor = true;
     }
   }
@@ -762,12 +767,23 @@ function gemsRemaining(kind) {
   return state.level.gems.filter((g) => g.type === kind && !g.got).length;
 }
 
+function updateDoors(dt) {
+  for (const door of state.level.doors) {
+    if (door.openT == null) door.openT = 0;
+    const p = state.players.find((pl) => pl.kind === door.type);
+    const want = p && p.atDoor && !p.dead ? 1 : 0;
+    const speed = want ? 2.4 : 3.2;
+    if (want > door.openT) door.openT = Math.min(1, door.openT + dt * speed);
+    else if (want < door.openT) door.openT = Math.max(0, door.openT - dt * speed);
+  }
+}
+
 function checkWin() {
   const [ice, fire] = state.players;
   if (ice.dead || fire.dead) return false;
   if (!ice.atDoor || !fire.atDoor) return false;
-  if (gemsRemaining("ice") > 0 || gemsRemaining("fire") > 0) return false;
-  return true;
+  // 双门开到位后再结算胜利
+  return state.level.doors.every((d) => (d.openT || 0) >= 0.92);
 }
 
 /* ========== 绘制：与其他模式统一的纸色神庙 ========== */
@@ -856,14 +872,15 @@ function liquidColors(type) {
 
 function drawLiquid(liq, t) {
   const c = liquidColors(liq.type);
-  ctx.fillStyle = c.glow;
-  ctx.fillRect(liq.x - 2, liq.y - 4, liq.w + 4, liq.h + 6);
+  // 不透明铺满，避免底下砖纹透出
+  ctx.fillStyle = c.b;
+  ctx.fillRect(liq.x, liq.y, liq.w, liq.h);
   const g = ctx.createLinearGradient(0, liq.y, 0, liq.y + liq.h);
   g.addColorStop(0, c.a);
   g.addColorStop(1, c.b);
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.moveTo(liq.x, liq.y + 5);
+  ctx.moveTo(liq.x, liq.y + 4);
   for (let x = 0; x <= liq.w; x += 5) {
     ctx.lineTo(liq.x + x, liq.y + Math.sin(x * 0.22 + t * 5 + liq.x) * 2.8);
   }
@@ -873,7 +890,7 @@ function drawLiquid(liq, t) {
   ctx.fill();
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.strokeRect(liq.x + 0.5, liq.y + 0.5, liq.w - 1, liq.h - 1);
 }
 
 function drawGem(gem, t) {
@@ -899,6 +916,8 @@ function drawDoor(door) {
   const isFire = door.type === "fire";
   const col = isFire ? "#c45c26" : "#3a6ea5";
   const top = door.y - door.h;
+  const open = Math.max(0, Math.min(1, door.openT || 0));
+  // 门框
   ctx.fillStyle = "#e4ddd0";
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2;
@@ -910,7 +929,9 @@ function drawDoor(door) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = col;
+
+  // 门洞（开启后露出）
+  ctx.fillStyle = open > 0.05 ? "rgba(26,26,26,0.45)" : col;
   ctx.beginPath();
   ctx.moveTo(door.x + 4, door.y);
   ctx.lineTo(door.x + 4, top + 22);
@@ -919,12 +940,45 @@ function drawDoor(door) {
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = "rgba(26,26,26,0.18)";
-  ctx.fillRect(door.x + 12, top + 28, door.w - 24, door.h - 36);
-  ctx.fillStyle = "#f2efe6";
-  ctx.font = "bold 18px Songti SC, serif";
-  ctx.textAlign = "center";
-  ctx.fillText(isFire ? "♂" : "♀", door.x + door.w / 2, top + door.h * 0.55);
+
+  // 双扇门向外打开
+  const leafW = (door.w - 8) / 2;
+  const leafH = door.h - 26;
+  const leafY = top + 22;
+  const swing = open * 0.92;
+  // 左扇
+  ctx.save();
+  ctx.translate(door.x + 4, leafY);
+  ctx.transform(Math.cos(swing), 0, Math.sin(swing) * 0.15, 1, 0, 0);
+  ctx.fillStyle = col;
+  ctx.fillRect(0, 0, leafW * (1 - open * 0.15), leafH);
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(0.5, 0.5, leafW * (1 - open * 0.15) - 1, leafH - 1);
+  ctx.restore();
+  // 右扇
+  ctx.save();
+  ctx.translate(door.x + door.w - 4, leafY);
+  ctx.transform(Math.cos(swing), 0, -Math.sin(swing) * 0.15, 1, 0, 0);
+  ctx.fillStyle = col;
+  ctx.fillRect(-leafW * (1 - open * 0.15), 0, leafW * (1 - open * 0.15), leafH);
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-leafW * (1 - open * 0.15) + 0.5, 0.5, leafW * (1 - open * 0.15) - 1, leafH - 1);
+  ctx.restore();
+
+  if (open < 0.35) {
+    ctx.fillStyle = "#f2efe6";
+    ctx.font = "bold 18px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.globalAlpha = 1 - open / 0.35;
+    ctx.fillText(isFire ? "♂" : "♀", door.x + door.w / 2, top + door.h * 0.55);
+    ctx.globalAlpha = 1;
+  } else {
+    // 开启闪光
+    ctx.fillStyle = `rgba(242,239,230,${0.15 + open * 0.25})`;
+    ctx.fillRect(door.x + 10, top + 28, door.w - 20, door.h - 40);
+  }
 }
 
 function drawLever(lev) {
@@ -1198,6 +1252,7 @@ function tick(ts) {
       for (const p of state.players) updatePlayer(dt, p);
       updateBoxes(dt);
       updateLeversAndGates(dt);
+      updateDoors(dt);
       syncHud();
       if (checkWin()) endGame(true);
     }

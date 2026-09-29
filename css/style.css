@@ -305,6 +305,14 @@ html.is-mobile #mobile-gate {
   background: rgba(196, 92, 38, 0.16);
 }
 
+.tag.thief {
+  background: rgba(40, 50, 80, 0.22);
+}
+
+.tag.dressup {
+  background: rgba(29, 42, 58, 0.18);
+}
+
 #hud-towerfall .label.p1 { color: #c45c26; }
 #hud-towerfall .label.p2 { color: #3a8f6e; }
 #hud-towerfall .stat {

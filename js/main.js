@@ -3,8 +3,10 @@ import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
 import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
-import { startIcefire, stopIcefire } from "./icefire.js?v=20260929i";
+import { startIcefire, stopIcefire } from "./icefire.js?v=20260929m";
 import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260929h";
+import { startThief, stopThief } from "./thief.js?v=20260929g";
+import { startDressup, stopDressup } from "./dressup.js?v=20260929g";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
@@ -13,7 +15,7 @@ const menu = document.getElementById("menu");
 const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
 
-const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall"];
+const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup"];
 
 let activeMode = null;
 
@@ -46,6 +48,8 @@ function stopActive() {
   if (activeMode === "paddle") stopPaddle();
   if (activeMode === "icefire") stopIcefire();
   if (activeMode === "towerfall") stopTowerfall();
+  if (activeMode === "thief") stopThief();
+  if (activeMode === "dressup") stopDressup();
   activeMode = null;
 }
 
@@ -209,6 +213,32 @@ function enterMode(mode) {
         p2Kills: document.getElementById("towerfall-p2-kills"),
         btnRestart: document.getElementById("btn-restart-towerfall"),
         backBtn: document.querySelector("#hud-towerfall [data-back]"),
+      },
+    });
+  } else if (mode === "thief") {
+    startThief({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-thief"),
+        overlay: document.getElementById("overlay-thief"),
+        gameover: document.getElementById("gameover-thief"),
+        endTitle: document.getElementById("thief-end-title"),
+        resultText: document.getElementById("thief-result-text"),
+        p1Score: document.getElementById("thief-p1-score"),
+        p2Score: document.getElementById("thief-p2-score"),
+        p1Wins: document.getElementById("thief-p1-wins"),
+        p2Wins: document.getElementById("thief-p2-wins"),
+        btnStart: document.getElementById("btn-start-thief"),
+        btnRestart: document.getElementById("btn-restart-thief"),
+      },
+    });
+  } else if (mode === "dressup") {
+    startDressup({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-dressup"),
+        overlay: document.getElementById("overlay-dressup"),
+        gameover: document.getElementById("gameover-dressup"),
       },
     });
   }
@@ -673,6 +703,111 @@ function drawMenuPreviews() {
     ctx.font = "bold 15px Songti SC, serif";
     ctx.textAlign = "center";
     ctx.fillText("FIGHT!", w * 0.5, h * 0.14);
+  });
+
+  setupPreviewCanvas("preview-thief", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(26,26,26,0.05)";
+    for (let x = 0; x < w; x += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    // 中缝
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(w * 0.5 - 2, 0, 4, h);
+    // 纸色楼影
+    ctx.fillStyle = "#e4ddd0";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.2;
+    ctx.fillRect(8, h * 0.35, 28, h * 0.35);
+    ctx.strokeRect(8.5, h * 0.35 + 0.5, 27, h * 0.35 - 1);
+    ctx.fillRect(w - 40, h * 0.3, 32, h * 0.4);
+    ctx.strokeRect(w - 39.5, h * 0.3 + 0.5, 31, h * 0.4 - 1);
+    // 掉落物
+    ctx.fillStyle = "#e8c86a";
+    ctx.beginPath();
+    ctx.arc(w * 0.28, h * 0.28, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#5ec8ff";
+    ctx.beginPath();
+    ctx.moveTo(w * 0.72, h * 0.22);
+    ctx.lineTo(w * 0.76, h * 0.3);
+    ctx.lineTo(w * 0.72, h * 0.38);
+    ctx.lineTo(w * 0.68, h * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // 小偷剪影
+    const thief = (x, color) => {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(x, h * 0.62, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillRect(x - 7, h * 0.68, 14, 22);
+      ctx.strokeRect(x - 7, h * 0.68, 14, 22);
+      ctx.fillStyle = "#8a5a38";
+      ctx.beginPath();
+      ctx.ellipse(x + 10, h * 0.7, 8, 7, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    };
+    thief(w * 0.28, "#e8b090");
+    thief(w * 0.72, "#90b0e8");
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("STEAL!", w * 0.5, h * 0.14);
+  });
+
+  setupPreviewCanvas("preview-dressup", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(26,26,26,0.05)";
+    for (let x = 0; x < w; x += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    // 仕女剪影
+    ctx.fillStyle = "#f0e6d4";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(w * 0.5, h * 0.28, 16, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#1d2a3a";
+    ctx.fillRect(w * 0.35, h * 0.42, w * 0.3, h * 0.4);
+    ctx.strokeRect(w * 0.35, h * 0.42, w * 0.3, h * 0.4);
+    ctx.fillStyle = "#f5f2e6";
+    ctx.fillRect(w * 0.42, h * 0.45, w * 0.16, h * 0.32);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(w * 0.38, h * 0.12, w * 0.24, 14);
+    ctx.fillStyle = "#d8a7a7";
+    ctx.beginPath();
+    ctx.arc(w * 0.45, h * 0.16, 3, 0, Math.PI * 2);
+    ctx.arc(w * 0.55, h * 0.16, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("换装", w * 0.5, h * 0.92);
   });
 }
 

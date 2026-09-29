@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20260929r" />
+  <link rel="stylesheet" href="css/style.css?v=20260929t" />
   <script>
     (function () {
       var ua = navigator.userAgent || "";
@@ -110,6 +110,28 @@
             <h2>对决模式</h2>
             <p>选鼠开战 · 神殿竞技 · 箭矢对轰</p>
             <p class="controls">选角上下切换 · P1：WASD+J · P2：方向键+1</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="thief" type="button">
+          <div class="card-preview" id="preview-thief">
+            <span class="preview-badge coop">双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">08</span><span class="tag thief">偷窃</span></div>
+            <h2>偷窃模式</h2>
+            <p>分屏夜盗 · 接住赃物 · 避开警报</p>
+            <p class="controls">P1：A/D · P2：←/→ · 先满 100 · 三局两胜</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="dressup" type="button">
+          <div class="card-preview" id="preview-dressup">
+            <span class="preview-badge solo">单人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">09</span><span class="tag dressup">换装</span></div>
+            <h2>换装模式</h2>
+            <p>无面仕女 · 袍色冠帽 · 妆容配饰</p>
+            <p class="controls">鼠标点选分类与单品 · 自由搭配</p>
           </div>
         </button>
       </div>
@@ -229,6 +251,28 @@
         <span id="towerfall-p2-kills">击杀 0</span>
       </div>
       <button type="button" class="btn-back" data-back>返回模式选择</button>
+    </div>
+
+    <div id="hud-thief" class="hud hidden">
+      <div class="stat">
+        <span class="label" style="color:#c45c26">P1</span>
+        <span id="thief-p1-score">0</span>
+        <span id="thief-p1-wins">胜 0</span>
+      </div>
+      <div class="stat">
+        <span class="label" style="color:#3a6ea5">P2</span>
+        <span id="thief-p2-score">0</span>
+        <span id="thief-p2-wins">胜 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="hud-dressup" class="hud hidden">
+      <div class="stat">
+        <span class="label">换装</span>
+        <span>仕女装扮</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
     </div>
 
     <!-- 塔防 HUD -->
@@ -412,6 +456,27 @@
         </div>
       </div>
     </div>
+
+    <div id="overlay-thief" class="overlay hidden">
+      <div class="panel">
+        <h2>偷窃模式</h2>
+        <p class="sub">分屏接赃 · 避开警报 · 先满 100 · 三局两胜</p>
+        <p class="sub">P1：A / D　　P2：← / →</p>
+        <button id="btn-start-thief" type="button">开始行窃</button>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-thief" class="overlay hidden">
+      <div class="panel">
+        <h2 id="thief-end-title">获胜！</h2>
+        <p id="thief-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-thief" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
@@ -461,6 +526,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260929an"></script>
+  <script type="module" src="js/main.js?v=20260929bc"></script>
 </body>
 </html>
