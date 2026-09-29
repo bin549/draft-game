@@ -1,0 +1,24 @@
+{
+  "blue": {
+    "anim": "assets/player/icefire/blue_anim.png",
+    "idle": "assets/player/icefire/blue_idle.png",
+    "cellW": 196,
+    "cellH": 164,
+    "cols": 8,
+    "runRow": 0,
+    "jumpRow": 1,
+    "idleW": 89,
+    "idleH": 160
+  },
+  "red": {
+    "anim": "assets/player/icefire/red_anim.png",
+    "idle": "assets/player/icefire/red_idle.png",
+    "cellW": 197,
+    "cellH": 164,
+    "cols": 8,
+    "runRow": 0,
+    "jumpRow": 1,
+    "idleW": 88,
+    "idleH": 160
+  }
+}

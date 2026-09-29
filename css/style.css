@@ -81,19 +81,19 @@ html.is-mobile #mobile-gate {
 .menu-content {
   position: relative;
   z-index: 1;
-  max-width: 1200px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: clamp(1.5rem, 5vh, 3rem) 1.25rem 2.5rem;
+  padding: clamp(1.25rem, 4vh, 2.5rem) 1.5rem 2.25rem;
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  padding-top: clamp(2.5rem, 10vh, 5.5rem);
+  justify-content: center;
 }
 
 .menu-header {
   text-align: center;
-  margin-bottom: clamp(3.5rem, 12vh, 7rem);
+  margin-bottom: clamp(1.25rem, 3.5vh, 2rem);
+  flex-shrink: 0;
 }
 
 .eyebrow {
@@ -104,9 +104,9 @@ html.is-mobile #mobile-gate {
 }
 
 .menu-header h1 {
-  font-size: clamp(2.2rem, 6vw, 3.2rem);
+  font-size: clamp(2rem, 5vw, 2.85rem);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   margin-bottom: 0;
 }
 
@@ -117,35 +117,42 @@ html.is-mobile #mobile-gate {
 
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
   width: 100%;
-  margin-top: clamp(1rem, 4vh, 2.5rem);
+  align-content: start;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 960px) {
+  .game-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+  }
+}
+
+@media (max-width: 640px) {
   .menu-content {
-    padding-top: 1.75rem;
+    padding: 1.25rem 1rem 1.75rem;
+    justify-content: flex-start;
   }
   .menu-header {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
   }
   .game-grid {
     grid-template-columns: 1fr;
-    gap: 0.9rem;
-    margin-top: 0.25rem;
+    gap: 0.85rem;
   }
   .card-preview {
-    height: 132px;
+    height: 128px;
   }
   .card-body {
     padding: 0.85rem 1rem 1rem;
   }
   .card-body h2 {
-    font-size: 1.2rem;
+    font-size: 1.15rem;
   }
   .card-body p {
-    font-size: 0.9rem;
+    font-size: 0.88rem;
   }
 }
 
@@ -155,30 +162,32 @@ html.is-mobile #mobile-gate {
   text-align: left;
   border: 2px solid var(--ink);
   background: var(--panel);
-  box-shadow: 8px 8px 0 var(--shadow);
+  box-shadow: 6px 6px 0 var(--shadow);
   cursor: pointer;
   font-family: inherit;
   color: inherit;
   overflow: hidden;
-  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  min-height: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .game-card:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 12px 12px 0 var(--shadow);
+  transform: translate(-3px, -3px);
+  box-shadow: 9px 9px 0 var(--shadow);
   background: #fff;
 }
 
 .game-card:active {
-  transform: translate(2px, 2px);
-  box-shadow: 4px 4px 0 var(--shadow);
+  transform: translate(1px, 1px);
+  box-shadow: 3px 3px 0 var(--shadow);
 }
 
 .card-preview {
-  height: 118px;
+  height: 112px;
   border-bottom: 2px solid var(--ink);
   background: var(--paper-deep);
   position: relative;
+  flex-shrink: 0;
 }
 
 .card-preview canvas {
@@ -210,14 +219,17 @@ html.is-mobile #mobile-gate {
 }
 
 .card-body {
-  padding: 0.85rem 0.9rem 1rem;
+  padding: 0.75rem 0.85rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .card-meta {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.3rem;
   gap: 0.5rem;
 }
 
@@ -240,23 +252,24 @@ html.is-mobile #mobile-gate {
 }
 
 .card-body h2 {
-  font-size: 1.15rem;
-  margin-bottom: 0.3rem;
+  font-size: 1.08rem;
+  margin-bottom: 0.25rem;
   letter-spacing: 0.04em;
 }
 
 .card-body p {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   opacity: 0.7;
   line-height: 1.35;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.3rem;
 }
 
 .card-body .controls {
-  font-size: 0.7rem;
-  opacity: 0.5;
+  font-size: 0.68rem;
+  opacity: 0.48;
   margin-bottom: 0;
-  margin-top: 0.25rem;
+  margin-top: auto;
+  padding-top: 0.35rem;
 }
 
 .tag {
@@ -284,8 +297,42 @@ html.is-mobile #mobile-gate {
   background: rgba(196, 92, 38, 0.15);
 }
 
+.tag.icefire {
+  background: linear-gradient(90deg, rgba(58, 130, 180, 0.22), rgba(196, 80, 50, 0.22));
+}
+
+.tag.towerfall {
+  background: rgba(196, 92, 38, 0.16);
+}
+
+#hud-towerfall .label.p1 { color: #c45c26; }
+#hud-towerfall .label.p2 { color: #3a8f6e; }
+#hud-towerfall .stat {
+  gap: 0.45rem;
+}
+#hud-towerfall #towerfall-p1-lives,
+#hud-towerfall #towerfall-p2-lives {
+  color: #a04028;
+}
+#hud-towerfall #towerfall-p1-kills,
+#hud-towerfall #towerfall-p2-kills {
+  opacity: 0.72;
+  font-size: 0.85em;
+}
+#hud-towerfall.is-select .fight-only {
+  display: none;
+}
+
 #paddle-hp-fill { background: var(--hp); }
 #plat-hp2-fill { background: #3a6ea5; }
+
+#hud-icefire .label.ice { color: #2a6a9a; }
+#hud-icefire .label.fire { color: #a04028; }
+#hud-icefire .door-status {
+  font-size: 0.72rem;
+  opacity: 0.7;
+  margin-left: 0.35rem;
+}
 
 .mode-pick-row {
   display: grid;

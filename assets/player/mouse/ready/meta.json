@@ -1,0 +1,56 @@
+[
+  {
+    "id": "mint",
+    "name": "薄荷绿鼠",
+    "color": "#6aba98",
+    "sprite": "assets/player/mouse/ready/mint.png",
+    "portrait": "assets/player/mouse/ready/mint_portrait.png",
+    "w": 160,
+    "h": 160
+  },
+  {
+    "id": "pink",
+    "name": "粉红鼠",
+    "color": "#e890b0",
+    "sprite": "assets/player/mouse/ready/pink.png",
+    "portrait": "assets/player/mouse/ready/pink_portrait.png",
+    "w": 160,
+    "h": 160
+  },
+  {
+    "id": "orange",
+    "name": "橘红鼠",
+    "color": "#e07040",
+    "sprite": "assets/player/mouse/ready/orange.png",
+    "portrait": "assets/player/mouse/ready/orange_portrait.png",
+    "w": 160,
+    "h": 160
+  },
+  {
+    "id": "purple",
+    "name": "紫晶鼠",
+    "color": "#9a70c0",
+    "sprite": "assets/player/mouse/ready/purple.png",
+    "portrait": "assets/player/mouse/ready/purple_portrait.png",
+    "w": 160,
+    "h": 160
+  },
+  {
+    "id": "gray",
+    "name": "灰鼠",
+    "color": "#888888",
+    "sprite": "assets/player/mouse/ready/gray.png",
+    "portrait": "assets/player/mouse/ready/gray_portrait.png",
+    "w": 160,
+    "h": 160
+  },
+  {
+    "id": "blue",
+    "name": "冰蓝鼠",
+    "color": "#5a90d0",
+    "sprite": "assets/player/mouse/ready/blue.png",
+    "portrait": "assets/player/mouse/ready/blue_portrait.png",
+    "w": 160,
+    "h": 160
+  }
+]

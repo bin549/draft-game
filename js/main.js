@@ -3,6 +3,8 @@ import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
 import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
+import { startIcefire, stopIcefire } from "./icefire.js?v=20260929i";
+import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260929h";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
@@ -11,7 +13,7 @@ const menu = document.getElementById("menu");
 const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
 
-const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle"];
+const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall"];
 
 let activeMode = null;
 
@@ -42,6 +44,8 @@ function stopActive() {
   if (activeMode === "tower") stopTower();
   if (activeMode === "rhythm") stopRhythm();
   if (activeMode === "paddle") stopPaddle();
+  if (activeMode === "icefire") stopIcefire();
+  if (activeMode === "towerfall") stopTowerfall();
   activeMode = null;
 }
 
@@ -166,6 +170,45 @@ function enterMode(mode) {
         bestText: document.getElementById("paddle-best-text"),
         btnStart: document.getElementById("btn-start-paddle"),
         btnRestart: document.getElementById("btn-restart-paddle"),
+      },
+    });
+  } else if (mode === "icefire") {
+    startIcefire({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-icefire"),
+        overlay: document.getElementById("overlay-icefire"),
+        gameover: document.getElementById("gameover-icefire"),
+        endTitle: document.getElementById("icefire-end-title"),
+        resultText: document.getElementById("icefire-result-text"),
+        iceGems: document.getElementById("icefire-ice-gems"),
+        fireGems: document.getElementById("icefire-fire-gems"),
+        iceDoor: document.getElementById("icefire-ice-door"),
+        fireDoor: document.getElementById("icefire-fire-door"),
+        stageText: document.getElementById("icefire-stage-text"),
+        timerText: document.getElementById("icefire-timer-text"),
+        hint: document.getElementById("icefire-hint"),
+        btnStart: document.getElementById("btn-start-icefire"),
+        btnRestart: document.getElementById("btn-restart-icefire"),
+      },
+    });
+  } else if (mode === "towerfall") {
+    startTowerfall({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-towerfall"),
+        overlay: document.getElementById("overlay-towerfall"),
+        gameover: document.getElementById("gameover-towerfall"),
+        endTitle: document.getElementById("towerfall-end-title"),
+        resultText: document.getElementById("towerfall-result-text"),
+        p1Name: document.getElementById("towerfall-p1-name"),
+        p2Name: document.getElementById("towerfall-p2-name"),
+        p1Lives: document.getElementById("towerfall-p1-lives"),
+        p2Lives: document.getElementById("towerfall-p2-lives"),
+        p1Kills: document.getElementById("towerfall-p1-kills"),
+        p2Kills: document.getElementById("towerfall-p2-kills"),
+        btnRestart: document.getElementById("btn-restart-towerfall"),
+        backBtn: document.querySelector("#hud-towerfall [data-back]"),
       },
     });
   }
@@ -451,6 +494,186 @@ function drawMenuPreviews() {
     ctx.fill();
     ctx.stroke();
   });
+
+  setupPreviewCanvas("preview-icefire", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = "#ebe4d6";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(8, h * 0.72, w - 16, 14);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(w * 0.35, h * 0.48, 70, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#7ab8d8";
+    ctx.fillRect(w * 0.22, h * 0.74, 28, 10);
+    ctx.strokeRect(w * 0.22, h * 0.74, 28, 10);
+    ctx.fillStyle = "#c45c26";
+    ctx.fillRect(w * 0.55, h * 0.74, 28, 10);
+    ctx.strokeRect(w * 0.55, h * 0.74, 28, 10);
+    ctx.fillStyle = "#3a8f6e";
+    ctx.fillRect(w * 0.4, h * 0.5, 22, 8);
+    ctx.strokeRect(w * 0.4, h * 0.5, 22, 8);
+
+    const gem = (x, y, color) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.rect(-4, -4, 8, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    };
+    gem(w * 0.3, h * 0.38, "#5ec8ff");
+    gem(w * 0.68, h * 0.36, "#e87848");
+
+    ctx.fillStyle = "#c45c26";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.fillRect(w * 0.12, h * 0.55, 18, 26);
+    ctx.strokeRect(w * 0.12, h * 0.55, 18, 26);
+    ctx.fillStyle = "#3a6ea5";
+    ctx.fillRect(w * 0.82, h * 0.55, 18, 26);
+    ctx.strokeRect(w * 0.82, h * 0.55, 18, 26);
+
+    const drawSilhouette = (x, y, color) => {
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(x, y - 16, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, y - 10);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x - 6, y + 9);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + 6, y + 9);
+      ctx.stroke();
+    };
+    drawSilhouette(w * 0.28, h * 0.62, "#6aa8c8");
+    drawSilhouette(w * 0.48, h * 0.62, "#c86848");
+  });
+
+  setupPreviewCanvas("preview-towerfall", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = "rgba(26,26,26,0.06)";
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 24) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+
+    const plat = (x, y, pw) => {
+      ctx.fillStyle = "#ebe4d6";
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.5;
+      ctx.fillRect(x, y, pw, 11);
+      ctx.strokeRect(x, y, pw, 11);
+      ctx.fillStyle = "#f2efe6";
+      ctx.fillRect(x + 1, y + 1, pw - 2, 3);
+    };
+    plat(8, h * 0.78, w - 16);
+    plat(w * 0.08, h * 0.52, 58);
+    plat(w * 0.62, h * 0.52, 58);
+    plat(w * 0.34, h * 0.36, 70);
+
+    // 灯笼
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, 6);
+    ctx.lineTo(w * 0.5, h * 0.22);
+    ctx.stroke();
+    ctx.fillStyle = "#e8c86a";
+    ctx.beginPath();
+    ctx.arc(w * 0.5, h * 0.24, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    const mouse = (x, y, color, faceRight) => {
+      ctx.save();
+      ctx.translate(x, y);
+      if (faceRight) ctx.scale(-1, 1);
+      ctx.fillStyle = color;
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.3;
+      // 耳
+      ctx.beginPath();
+      ctx.ellipse(-5, -18, 4, 5.5, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(5, -18, 4, 5.5, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // 头+身
+      ctx.beginPath();
+      ctx.ellipse(0, -8, 8, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(0, 4, 9, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // 枪
+      ctx.fillStyle = "#3a3a3a";
+      ctx.fillRect(-18, -2, 14, 3);
+      ctx.strokeRect(-18, -2, 14, 3);
+      // 尾
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.beginPath();
+      ctx.moveTo(8, 8);
+      ctx.quadraticCurveTo(18, 4, 16, -2);
+      ctx.stroke();
+      ctx.restore();
+    };
+    mouse(w * 0.28, h * 0.52 - 2, "#6aba98", true);
+    mouse(w * 0.72, h * 0.52 - 2, "#9a70c0", false);
+
+    // 对射箭头示意
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.fillStyle = "#e8e0d2";
+    ctx.lineWidth = 1.2;
+    const arrow = (x, y, dir) => {
+      ctx.beginPath();
+      ctx.moveTo(x + dir * 8, y);
+      ctx.lineTo(x - dir * 4, y - 3);
+      ctx.lineTo(x - dir * 4, y + 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    };
+    arrow(w * 0.42, h * 0.44, 1);
+    arrow(w * 0.58, h * 0.48, -1);
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 15px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("FIGHT!", w * 0.5, h * 0.14);
+  });
 }
 
 document.getElementById("game-grid").addEventListener("click", (e) => {
@@ -463,6 +686,8 @@ document.querySelectorAll("[data-back]").forEach((btn) => {
   btn.addEventListener("click", () => {
     // 节奏关卡内返回 → 选关菜单；选关页再返回 → 主菜单
     if (activeMode === "rhythm" && handleRhythmBack()) return;
+    // 对决：对战中返回选角；选角再返回模式选择
+    if (activeMode === "towerfall" && handleTowerfallBack()) return;
     showMenu();
   });
 });

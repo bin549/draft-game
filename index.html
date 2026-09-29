@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20260929k" />
+  <link rel="stylesheet" href="css/style.css?v=20260929r" />
   <script>
     (function () {
       var ua = navigator.userAgent || "";
@@ -90,6 +90,28 @@
             <p class="controls">WASD / 方向键移动</p>
           </div>
         </button>
+        <button class="game-card" data-mode="icefire" type="button">
+          <div class="card-preview" id="preview-icefire">
+            <span class="preview-badge coop">双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">06</span><span class="tag icefire">逃亡</span></div>
+            <h2>逃亡模式</h2>
+            <p>森林神庙 · 拉杆推箱 · 协作解谜</p>
+            <p class="controls">P1：WASD+S拉杆 · P2：方向键+↓拉杆</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="towerfall" type="button">
+          <div class="card-preview" id="preview-towerfall">
+            <span class="preview-badge coop">双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">07</span><span class="tag towerfall">对决</span></div>
+            <h2>对决模式</h2>
+            <p>选鼠开战 · 神殿竞技 · 箭矢对轰</p>
+            <p class="controls">选角上下切换 · P1：WASD+J · P2：方向键+1</p>
+          </div>
+        </button>
       </div>
     </div>
   </div>
@@ -171,6 +193,42 @@
         <span id="paddle-best-text">最高 0</span>
       </div>
       <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <!-- 逃亡模式 HUD -->
+    <div id="hud-icefire" class="hud hidden">
+      <div class="stat">
+        <span class="label ice">冰女宝石</span>
+        <span id="icefire-ice-gems">0/0</span>
+        <span id="icefire-ice-door" class="door-status">未就位</span>
+      </div>
+      <div class="stat">
+        <span class="label fire">火女宝石</span>
+        <span id="icefire-fire-gems">0/0</span>
+        <span id="icefire-fire-door" class="door-status">未就位</span>
+      </div>
+      <div class="stat time">
+        <span id="icefire-timer-text">00:00</span>
+        <span id="icefire-stage-text">关卡 1/3</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <!-- 对决模式 HUD -->
+    <div id="hud-towerfall" class="hud hidden">
+      <div class="stat fight-only">
+        <span class="label p1">P1</span>
+        <span id="towerfall-p1-name">—</span>
+        <span id="towerfall-p1-lives">❤ 3</span>
+        <span id="towerfall-p1-kills">击杀 0</span>
+      </div>
+      <div class="stat fight-only">
+        <span class="label p2">P2</span>
+        <span id="towerfall-p2-name">—</span>
+        <span id="towerfall-p2-lives">❤ 3</span>
+        <span id="towerfall-p2-kills">击杀 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回模式选择</button>
     </div>
 
     <!-- 塔防 HUD -->
@@ -313,6 +371,47 @@
         </div>
       </div>
     </div>
+
+    <!-- 逃亡模式面板 -->
+    <div id="overlay-icefire" class="overlay hidden">
+      <div class="panel">
+        <h2>逃亡模式</h2>
+        <p class="sub">冰女不怕水、怕岩浆 · 火女不怕火、怕水 · 绿泥双方皆亡<br />P1 冰女：WASD / 空格跳 · P2 火女：方向键 / ↑跳<br />走近拉杆自动扳动 · 踩按钮/推箱压板开闸 · 齐进终点门</p>
+        <button id="btn-start-icefire" type="button">开始逃亡</button>
+      </div>
+    </div>
+
+    <div id="gameover-icefire" class="overlay hidden">
+      <div class="panel">
+        <h2 id="icefire-end-title">通关！</h2>
+        <p id="icefire-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-icefire" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="icefire-hint" class="plat-hint hidden"></div>
+
+    <!-- 对决结算 -->
+    <div id="overlay-towerfall" class="overlay hidden">
+      <div class="panel">
+        <h2>对决模式</h2>
+        <p class="sub">双人选鼠 · 神殿对轰</p>
+      </div>
+    </div>
+
+    <div id="gameover-towerfall" class="overlay hidden">
+      <div class="panel">
+        <h2 id="towerfall-end-title">获胜！</h2>
+        <p id="towerfall-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-towerfall" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回选角</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
@@ -362,6 +461,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260929t"></script>
+  <script type="module" src="js/main.js?v=20260929an"></script>
 </body>
 </html>
