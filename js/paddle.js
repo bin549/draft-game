@@ -198,6 +198,7 @@ function createState() {
     gameOver: false,
     capsizing: false,
     recovering: false,
+    transition: null,
     capsize: {
       t: 0,
       index: 0,
@@ -348,6 +349,7 @@ function startRecover() {
   state.capsize = { t: 0, index: 0, done: false, hold: 0, seq: RECOVER_SEQ, mode: "recover" };
   state.player.vx = 0;
   state.player.vy = 0;
+  state.player.hp = state.player.maxHp;
   state.player.frame = 0;
   state.player.anim = 0;
 }
@@ -372,12 +374,113 @@ function finishCapsize() {
 }
 
 function finishRecover() {
+  // 定格在爬起最后一帧（转场由 beginRestart 同步启动，此处不再触发）
   state.recovering = false;
-  state.capsize = { t: 0, index: 0, done: false, hold: 0, seq: FAIL_SEQ, mode: "fail" };
-  state.player.invuln = INVULN_TIME;
-  state.player.grace = INVULN_TIME;
-  state.player.frame = 0;
-  state.player.anim = 0;
+  state.capsize = {
+    t: 0,
+    index: RECOVER_SEQ.length - 1,
+    done: true,
+    hold: 0,
+    seq: RECOVER_SEQ,
+    mode: "recover",
+  };
+}
+
+function startRestartTransition() {
+  const p = state.player;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  state.transition = {
+    t: 0,
+    phase: "close",
+    swapped: false,
+    durationClose: 1.05,
+    durationOpen: 0.65,
+    cx: p.x,
+    cy: p.y,
+    // 盖住到屏幕角所需半径
+    maxR: Math.hypot(Math.max(p.x, w - p.x), Math.max(p.y, h - p.y)) + 24,
+  };
+}
+
+function applyPlayerSize() {
+  if (!state || !frameW) return;
+  const drawH = frameH * PLAYER_SCALE;
+  const drawW = frameW * PLAYER_SCALE;
+  state.player.w = drawW * 0.72;
+  state.player.h = drawH * 0.38;
+}
+
+function resetRunPreservingTransition() {
+  const tr = state.transition;
+  const best = state.best;
+  state = createState();
+  state.best = best;
+  applyPlayerSize();
+  const p = state.player;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  state.transition = {
+    ...tr,
+    phase: "open",
+    t: 0,
+    swapped: true,
+    cx: p.x,
+    cy: p.y,
+    maxR: Math.hypot(Math.max(p.x, w - p.x), Math.max(p.y, h - p.y)) + 24,
+  };
+  updateHud();
+}
+
+function updateTransition(dt) {
+  const tr = state.transition;
+  if (!tr) return;
+  tr.t += dt;
+  if (tr.phase === "close") {
+    if (tr.t >= tr.durationClose) {
+      resetRunPreservingTransition();
+    }
+  } else if (tr.phase === "open") {
+    if (tr.t >= tr.durationOpen) {
+      state.transition = null;
+      state.player.invuln = INVULN_TIME;
+      state.player.grace = INVULN_TIME;
+    }
+  }
+}
+
+/** 虹膜过渡：黑幕中间开圆洞，圆缩小收束 / 放大散开 */
+function drawTransition(w, h) {
+  const tr = state?.transition;
+  if (!tr) return;
+
+  const smooth = (t) => {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+  };
+
+  const maxR = tr.maxR || Math.hypot(w, h);
+  let holeR;
+  if (tr.phase === "close") {
+    // 洞从满屏收到 0 → 画面被黑幕吞没
+    holeR = maxR * (1 - smooth(tr.t / tr.durationClose));
+  } else {
+    // 洞从 0 扩到满屏 → 露出新局
+    holeR = maxR * smooth(tr.t / tr.durationOpen);
+  }
+
+  if (holeR >= maxR - 0.5) return; // 全开时无需遮罩
+
+  ctx.save();
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  ctx.rect(0, 0, w, h);
+  if (holeR > 0.5) {
+    ctx.moveTo(tr.cx + holeR, tr.cy);
+    ctx.arc(tr.cx, tr.cy, holeR, 0, Math.PI * 2, true);
+  }
+  ctx.fill("evenodd");
+  ctx.restore();
 }
 
 function burst(x, y, color, n = 8) {
@@ -419,9 +522,27 @@ function updateHud() {
 }
 
 function update(dt) {
-  if (!state || state.gameOver) return;
+  if (!state) return;
 
-  // 翻船 / 再起演出：减速滚动，播完序列后结算或恢复操控
+  // 虹膜转场；爬起动画可同时推进
+  if (state.transition) {
+    if (state.recovering) updateCapsize(dt);
+    updateTransition(dt);
+    if (state.shake > 0) state.shake = Math.max(0, state.shake - dt);
+    for (const pt of state.particles) {
+      pt.life -= dt;
+      pt.x += pt.vx * dt;
+      pt.y += pt.vy * dt;
+      pt.vx *= 0.96;
+      pt.vy *= 0.96;
+    }
+    state.particles = state.particles.filter((pt) => pt.life > 0);
+    return;
+  }
+
+  if (state.gameOver) return;
+
+  // 翻船 / 再起演出：减速滚动，播完序列后结算或进入转场
   if (state.capsizing || state.recovering) {
     updateCapsize(dt);
     if (state.shake > 0) state.shake = Math.max(0, state.shake - dt);
@@ -842,7 +963,7 @@ function drawPlayer() {
   if (!state) return;
   const p = state.player;
 
-  if (state.capsizing || state.recovering || (state.capsize?.done && state.gameOver)) {
+  if (state.capsizing || state.recovering || (state.capsize?.done && (state.gameOver || state.transition))) {
     if (!capsizeSheet) return;
     const seq = state.capsize.seq || FAIL_SEQ;
     const frame = seq[Math.min(state.capsize.index, seq.length - 1)];
@@ -1012,6 +1133,7 @@ function render() {
   }
 
   ctx.restore();
+  drawTransition(w, h);
 }
 
 function loop(ts) {
@@ -1023,21 +1145,35 @@ function loop(ts) {
   if (running) raf = requestAnimationFrame(loop);
 }
 
-function beginRun(opts = {}) {
-  const withRecover = !!opts.recover;
+function beginRun() {
   ensureAssets().then(() => {
     state = createState();
-    // 资源就绪后再用真实帧尺寸修正碰撞盒
-    const drawH = frameH * PLAYER_SCALE;
-    const drawW = frameW * PLAYER_SCALE;
-    state.player.w = drawW * 0.72;
-    state.player.h = drawH * 0.38;
-
-    if (withRecover) startRecover();
+    applyPlayerSize();
 
     running = true;
     els.overlay?.classList.add("hidden");
     els.gameover?.classList.add("hidden");
+    updateHud();
+    lastTs = performance.now();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(loop);
+  });
+}
+
+/** 再来一局：爬起动画与虹膜过渡同时播放 */
+function beginRestart() {
+  ensureAssets().then(() => {
+    if (!state) {
+      beginRun();
+      return;
+    }
+    if (state.transition) return;
+    els.overlay?.classList.add("hidden");
+    els.gameover?.classList.add("hidden");
+    state.capsizing = false;
+    startRecover();
+    startRestartTransition();
+    running = true;
     updateHud();
     lastTs = performance.now();
     cancelAnimationFrame(raf);
@@ -1072,7 +1208,7 @@ export function startPaddle(options) {
   });
 
   els.btnStart.onclick = () => beginRun();
-  els.btnRestart.onclick = () => beginRun({ recover: true });
+  els.btnRestart.onclick = () => beginRestart();
 
   ensureAssets().then(() => {
     // 预览首屏

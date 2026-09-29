@@ -1,8 +1,8 @@
 import { startSurvivor, stopSurvivor } from "./survivor.js?v=20260927e";
-import { startPlatform, stopPlatform } from "./platform.js?v=20260929j";
+import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
-import { startPaddle, stopPaddle } from "./paddle.js?v=20260929k";
+import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";

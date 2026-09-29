@@ -33,6 +33,9 @@ const DASH_SPEED = 980;
 const DASH_TIME = 0.14;
 const DASH_COOLDOWN = 0.06;
 const START_DASHES = 1;
+/** 双人共享镜头边距：玩家不能被甩出画面 */
+const COOP_PAD_X = 52;
+const COOP_PAD_Y = 64;
 
 /** 单人 / 双人键位 */
 const CTRL = {
@@ -1458,12 +1461,26 @@ function syncCamera(dt, instant = false) {
   const alive = alivePlayers();
   let focusX = state.player.x;
   let focusY = state.player.y;
-  if (alive.length > 0) {
-    focusX = alive.reduce((s, p) => s + p.x, 0) / alive.length;
-    focusY = alive.reduce((s, p) => s + p.y, 0) / alive.length;
+  // 单人略偏右下；双人居中框住两人
+  let biasX = 0.38;
+  let biasY = 0.58;
+
+  if (alive.length === 1) {
+    focusX = alive[0].x;
+    focusY = alive[0].y;
+  } else if (alive.length >= 2) {
+    biasX = 0.5;
+    biasY = 0.5;
+    const minX = Math.min(...alive.map((p) => p.x));
+    const maxX = Math.max(...alive.map((p) => p.x));
+    const minY = Math.min(...alive.map((p) => p.y));
+    const maxY = Math.max(...alive.map((p) => p.y));
+    focusX = (minX + maxX) * 0.5;
+    focusY = (minY + maxY) * 0.5;
   }
-  const targetX = focusX - viewW * 0.38;
-  const targetY = focusY - viewH * 0.58;
+
+  const targetX = focusX - viewW * biasX;
+  const targetY = focusY - viewH * biasY;
   const maxX = Math.max(0, state.level.width - viewW);
   const maxY = Math.max(0, state.level.height - viewH);
   const minY = viewH > state.level.height ? (state.level.height - viewH) / 2 : 0;
@@ -1472,11 +1489,68 @@ function syncCamera(dt, instant = false) {
   if (instant || dt == null) {
     state.camera.x = tx;
     state.camera.y = ty;
-    return;
+  } else {
+    const k = Math.min(1, 10 * dt);
+    state.camera.x += (tx - state.camera.x) * k;
+    state.camera.y += (ty - state.camera.y) * k;
   }
-  const k = Math.min(1, 10 * dt);
-  state.camera.x += (tx - state.camera.x) * k;
-  state.camera.y += (ty - state.camera.y) * k;
+  clampCoopPlayersToCamera();
+}
+
+/** 双人：把玩家限制在当前镜头内，领先者不能把落后的人甩出画面 */
+function clampCoopPlayersToCamera() {
+  if (!state?.coop) return;
+  const alive = alivePlayers();
+  if (alive.length < 2) return;
+
+  const viewW = window.innerWidth;
+  const viewH = window.innerHeight;
+  const cam = state.camera;
+  const left = cam.x + COOP_PAD_X;
+  const right = cam.x + viewW - COOP_PAD_X;
+  const top = cam.y + COOP_PAD_Y;
+  const bottom = cam.y + viewH - COOP_PAD_Y;
+
+  for (const p of alive) {
+    const hw = (p.w || 24) * 0.5;
+    const hh = (p.h || 40) * 0.5;
+    const minX = left + hw;
+    const maxX = right - hw;
+    const minY = top + hh;
+    const maxY = bottom - hh;
+
+    if (p.x < minX) {
+      p.x = minX;
+      if (p.vx < 0) p.vx = 0;
+      if (p.dashing && p.dashDirX < 0) {
+        p.dashTime = 0;
+        p.dashing = false;
+      }
+    } else if (p.x > maxX) {
+      p.x = maxX;
+      if (p.vx > 0) p.vx = 0;
+      if (p.dashing && p.dashDirX > 0) {
+        p.dashTime = 0;
+        p.dashing = false;
+      }
+    }
+
+    if (p.y < minY) {
+      p.y = minY;
+      if (p.vy < 0) p.vy = 0;
+      if (p.dashing && p.dashDirY < 0) {
+        p.dashTime = 0;
+        p.dashing = false;
+      }
+    } else if (p.y > maxY) {
+      p.y = maxY;
+      if (p.vy > 0) p.vy = 0;
+      if (p.dashing && p.dashDirY > 0) {
+        p.dashTime = 0;
+        p.dashing = false;
+      }
+    }
+  }
 }
 
 function drawPlatforms(sx, sy) {
