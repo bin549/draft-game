@@ -7,7 +7,7 @@ import {
   drawFireball,
 } from "./draw.js";
 import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js?v=20260927e";
-import { showCharSelect } from "./charselect.js?v=20260927e";
+import { showCharSelect } from "./charselect.js?v=20260929i";
 import {
   loadMonsters,
   drawMonster,

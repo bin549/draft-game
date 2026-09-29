@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20260927n" />
+  <link rel="stylesheet" href="css/style.css?v=20260929k" />
   <script>
     (function () {
       var ua = navigator.userAgent || "";
@@ -33,7 +33,9 @@
       </header>
       <div class="game-grid" id="game-grid">
         <button class="game-card" data-mode="survivor" type="button">
-          <div class="card-preview" id="preview-survivor"></div>
+          <div class="card-preview" id="preview-survivor">
+            <span class="preview-badge solo">单人</span>
+          </div>
           <div class="card-body">
             <div class="card-meta"><span class="mode-num">01</span><span class="tag">生存</span></div>
             <h2>生存模式</h2>
@@ -42,16 +44,23 @@
           </div>
         </button>
         <button class="game-card" data-mode="platform" type="button">
-          <div class="card-preview" id="preview-platform"></div>
+          <div class="card-preview" id="preview-platform">
+            <span class="preview-badge coop">可双人</span>
+          </div>
           <div class="card-body">
-            <div class="card-meta"><span class="mode-num">02</span><span class="tag shoot">平台</span></div>
+            <div class="card-meta">
+              <span class="mode-num">02</span>
+              <span class="tag shoot">平台</span>
+            </div>
             <h2>平台模式</h2>
             <p>冲刺晶石 · 移动平台 · 狐火</p>
-            <p class="controls">点击进入 · 选角后开始</p>
+            <p class="controls">P1：WASD + JKL · P2：方向键 + 123 · 可加入2P</p>
           </div>
         </button>
         <button class="game-card" data-mode="tower" type="button">
-          <div class="card-preview" id="preview-tower"></div>
+          <div class="card-preview" id="preview-tower">
+            <span class="preview-badge solo">单人</span>
+          </div>
           <div class="card-body">
             <div class="card-meta"><span class="mode-num">03</span><span class="tag defend">塔防</span></div>
             <h2>塔防模式</h2>
@@ -60,12 +69,25 @@
           </div>
         </button>
         <button class="game-card" data-mode="rhythm" type="button">
-          <div class="card-preview" id="preview-rhythm"></div>
+          <div class="card-preview" id="preview-rhythm">
+            <span class="preview-badge solo">单人</span>
+          </div>
           <div class="card-body">
             <div class="card-meta"><span class="mode-num">04</span><span class="tag rhythm">节奏</span></div>
             <h2>节奏模式</h2>
             <p>刺字 · 跨栏 · 砍头 · 射击 · 踩点互动</p>
             <p class="controls">点击进入 · 空格/点击踩点</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="paddle" type="button">
+          <div class="card-preview" id="preview-paddle">
+            <span class="preview-badge solo">单人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">05</span><span class="tag paddle">划水</span></div>
+            <h2>划水模式</h2>
+            <p>卷轴河面 · 上下位移 · 躲避礁石浮木</p>
+            <p class="controls">WASD / 方向键移动</p>
           </div>
         </button>
       </div>
@@ -99,9 +121,14 @@
     <!-- 平台射击 HUD -->
     <div id="hud-platform" class="hud hidden">
       <div class="stat">
-        <span class="label">生命</span>
+        <span class="label" id="plat-p1-label">生命</span>
         <div class="bar"><div id="plat-hp-fill"></div></div>
         <span id="plat-hp-text">100</span>
+      </div>
+      <div class="stat hidden" id="plat-p2-stat">
+        <span class="label">P2</span>
+        <div class="bar"><div id="plat-hp2-fill"></div></div>
+        <span id="plat-hp2-text">100</span>
       </div>
       <div class="stat">
         <span class="label">武器</span>
@@ -131,6 +158,21 @@
       <button type="button" class="btn-back" data-back>返回选关</button>
     </div>
 
+    <!-- 划水 HUD -->
+    <div id="hud-paddle" class="hud hidden">
+      <div class="stat">
+        <span class="label">生命</span>
+        <div class="bar"><div id="paddle-hp-fill"></div></div>
+        <span id="paddle-hp-text">1/1</span>
+      </div>
+      <div class="stat time">
+        <span id="paddle-dist-text">0 m</span>
+        <span id="paddle-score-text">得分 0</span>
+        <span id="paddle-best-text">最高 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
     <!-- 塔防 HUD -->
     <div id="hud-tower" class="hud hud-tower hidden">
       <div class="stat">
@@ -151,9 +193,14 @@
 
     <!-- 角色选择（幸存者 / 平台共用） -->
     <div id="overlay-charselect" class="overlay hidden">
-      <div class="panel panel-wide">
-        <h2 id="charselect-title">选择角色</h2>
-        <p class="sub">剑客 · 魔法师 · 骑士 · 弓箭手</p>
+      <div class="panel panel-wide panel-charselect">
+        <div class="charselect-head">
+          <div class="charselect-titles">
+            <h2 id="charselect-title">选择角色</h2>
+            <p class="sub">剑客 · 魔法师 · 骑士 · 弓箭手</p>
+          </div>
+          <button type="button" id="btn-join-2p" class="btn-join-2p hidden">加入2P</button>
+        </div>
         <div id="char-grid" class="char-grid"></div>
         <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
       </div>
@@ -190,7 +237,7 @@
     <div id="overlay-platform" class="overlay hidden">
       <div class="panel">
         <h2>平台模式</h2>
-        <p class="sub">A/D 移动 · 空格 / W / ↑ 跳跃（可从下方跳上平台，空中再跳一次） · Shift 八向冲刺（最多一次，晶石可补充） · 鼠标瞄准点击攻击</p>
+        <p class="sub" id="plat-overlay-sub">A/D 移动 · 空格/W/↑/K 跳跃 · Shift/L 冲刺 · 鼠标或 J 攻击</p>
         <button id="btn-start-platform" type="button">选择角色</button>
       </div>
     </div>
@@ -246,6 +293,26 @@
         </div>
       </div>
     </div>
+
+    <!-- 划水面板 -->
+    <div id="overlay-paddle" class="overlay hidden">
+      <div class="panel">
+        <h2>划水模式</h2>
+        <p class="sub">WASD / 方向键上下左右移动 · 躲避右侧漂来的礁石、浮木与漩涡</p>
+        <button id="btn-start-paddle" type="button">开始划水</button>
+      </div>
+    </div>
+
+    <div id="gameover-paddle" class="overlay hidden">
+      <div class="panel">
+        <h2 id="paddle-end-title">翻船了</h2>
+        <p id="paddle-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-paddle" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
@@ -295,6 +362,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260927m"></script>
+  <script type="module" src="js/main.js?v=20260929o"></script>
 </body>
 </html>

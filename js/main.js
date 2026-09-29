@@ -1,7 +1,8 @@
 import { startSurvivor, stopSurvivor } from "./survivor.js?v=20260927e";
-import { startPlatform, stopPlatform } from "./platform.js?v=20260927l";
+import { startPlatform, stopPlatform } from "./platform.js?v=20260929j";
 import { startTower, stopTower } from "./tower.js";
-import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js";
+import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
+import { startPaddle, stopPaddle } from "./paddle.js?v=20260929k";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
@@ -10,7 +11,7 @@ const menu = document.getElementById("menu");
 const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
 
-const MODE_IDS = ["survivor", "platform", "tower", "rhythm"];
+const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle"];
 
 let activeMode = null;
 
@@ -23,6 +24,7 @@ function hideAllModeUi() {
   document.getElementById("levelup")?.classList.add("hidden");
   document.getElementById("overlay-charselect")?.classList.add("hidden");
   document.getElementById("overlay-rhythm-levels")?.classList.add("hidden");
+  document.getElementById("btn-join-2p")?.classList.add("hidden");
   document.getElementById("tower-dock")?.classList.add("hidden");
   document.getElementById("survivor-magic-dock")?.classList.add("hidden");
 }
@@ -39,6 +41,7 @@ function stopActive() {
   if (activeMode === "platform") stopPlatform();
   if (activeMode === "tower") stopTower();
   if (activeMode === "rhythm") stopRhythm();
+  if (activeMode === "paddle") stopPaddle();
   activeMode = null;
 }
 
@@ -98,6 +101,12 @@ function enterMode(mode) {
         ammoText: document.getElementById("ammo-text"),
         btnStart: document.getElementById("btn-start-platform"),
         btnRestart: document.getElementById("btn-restart-platform"),
+        btnJoin2P: document.getElementById("btn-join-2p"),
+        p2Stat: document.getElementById("plat-p2-stat"),
+        hp2Fill: document.getElementById("plat-hp2-fill"),
+        hp2Text: document.getElementById("plat-hp2-text"),
+        p1Label: document.getElementById("plat-p1-label"),
+        overlaySub: document.getElementById("plat-overlay-sub"),
       },
     });
   } else if (mode === "tower") {
@@ -139,6 +148,24 @@ function enterMode(mode) {
         comboText: document.getElementById("rhythm-combo-text"),
         hpFill: document.getElementById("rhythm-hp-fill"),
         btnRestart: document.getElementById("btn-restart-rhythm"),
+      },
+    });
+  } else if (mode === "paddle") {
+    startPaddle({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-paddle"),
+        overlay: document.getElementById("overlay-paddle"),
+        gameover: document.getElementById("gameover-paddle"),
+        endTitle: document.getElementById("paddle-end-title"),
+        resultText: document.getElementById("paddle-result-text"),
+        hpFill: document.getElementById("paddle-hp-fill"),
+        hpText: document.getElementById("paddle-hp-text"),
+        scoreText: document.getElementById("paddle-score-text"),
+        distText: document.getElementById("paddle-dist-text"),
+        bestText: document.getElementById("paddle-best-text"),
+        btnStart: document.getElementById("btn-start-paddle"),
+        btnRestart: document.getElementById("btn-restart-paddle"),
       },
     });
   }
@@ -294,6 +321,135 @@ function drawMenuPreviews() {
     ctx.fillStyle = "#1a1a1a";
     ctx.fillText("♪", w * 0.78, h * 0.45);
     ctx.fillText("♫", w * 0.72, h * 0.7);
+  });
+
+  setupPreviewCanvas("preview-paddle", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.5, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+
+    // 云（圆瓣 + 墨线 + 折痕）
+    const drawPreviewCloud = (cx, cy, sc) => {
+      const lobes = [
+        { x: 0, y: 4, r: 7 },
+        { x: 10, y: -2, r: 9 },
+        { x: 22, y: 2, r: 7 },
+        { x: 10, y: 6, r: 6 },
+      ];
+      const ink = 1.35;
+      ctx.fillStyle = "#1a1a1a";
+      for (const L of lobes) {
+        ctx.beginPath();
+        ctx.arc(cx + L.x * sc, cy + L.y * sc, L.r * sc + ink, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = "#ffffff";
+      for (const L of lobes) {
+        ctx.beginPath();
+        ctx.arc(cx + L.x * sc, cy + L.y * sc, L.r * sc, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.strokeStyle = "#1a1a1a";
+      ctx.lineWidth = 1.2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(cx + 10 * sc, cy, 6 * sc, 0.1, 1.25);
+      ctx.stroke();
+    };
+    drawPreviewCloud(w * 0.18, h * 0.18, 1);
+    drawPreviewCloud(w * 0.72, h * 0.14, 0.85);
+
+    // 远山
+    ctx.fillStyle = "#ddd6c8";
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let x = 0; x <= w; x += 12) {
+      const y = h * 0.42 + Math.sin(x * 0.02) * 12 + Math.sin(x * 0.045) * 6;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += 12) {
+      const y = h * 0.42 + Math.sin(x * 0.02) * 12 + Math.sin(x * 0.045) * 6;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // 近山
+    ctx.fillStyle = "#d0c8b8";
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    for (let x = 0; x <= w; x += 12) {
+      const y = h * 0.52 + Math.sin(x * 0.028 + 1) * 10;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    for (let x = 0; x <= w; x += 12) {
+      const y = h * 0.52 + Math.sin(x * 0.028 + 1) * 10;
+      if (x === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // 水面
+    const water = ctx.createLinearGradient(0, h * 0.58, 0, h);
+    water.addColorStop(0, "rgba(170, 206, 224, 0.35)");
+    water.addColorStop(1, "rgba(122, 172, 200, 0.55)");
+    ctx.fillStyle = water;
+    ctx.fillRect(0, h * 0.58, w, h * 0.42);
+    ctx.strokeStyle = "rgba(26,26,26,0.18)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 2; i++) {
+      const yy = h * 0.68 + i * 10;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 10) {
+        const y = yy + Math.sin(x * 0.1 + i) * 1.5;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // 小船
+    ctx.fillStyle = "#3a3a3a";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.22, h * 0.72);
+    ctx.quadraticCurveTo(w * 0.38, h * 0.78, w * 0.55, h * 0.72);
+    ctx.quadraticCurveTo(w * 0.38, h * 0.66, w * 0.22, h * 0.72);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(w * 0.38, h * 0.58, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(w * 0.38, h * 0.63);
+    ctx.lineTo(w * 0.38, h * 0.7);
+    ctx.moveTo(w * 0.38, h * 0.65);
+    ctx.lineTo(w * 0.48, h * 0.6);
+    ctx.stroke();
+
+    ctx.fillStyle = "#d7cebf";
+    ctx.beginPath();
+    ctx.moveTo(w * 0.72, h * 0.68);
+    ctx.lineTo(w * 0.76, h * 0.6);
+    ctx.lineTo(w * 0.82, h * 0.62);
+    ctx.lineTo(w * 0.8, h * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
   });
 }
 

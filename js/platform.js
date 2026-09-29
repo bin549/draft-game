@@ -4,7 +4,7 @@ import {
   drawSprout,
 } from "./draw.js";
 import { getCharacter, drawCharacter, drawWeaponProjectile } from "./characters.js";
-import { showCharSelect } from "./charselect.js";
+import { showCharSelect } from "./charselect.js?v=20260929i";
 import {
   loadMonsters,
   makeMonsterStats,
@@ -34,6 +34,38 @@ const DASH_TIME = 0.14;
 const DASH_COOLDOWN = 0.06;
 const START_DASHES = 1;
 
+/** 单人 / 双人键位 */
+const CTRL = {
+  solo: {
+    left: ["KeyA", "ArrowLeft"],
+    right: ["KeyD", "ArrowRight"],
+    up: ["KeyW", "ArrowUp"],
+    down: ["KeyS", "ArrowDown"],
+    // 兼容原键位 + 双人 P1（K 跳 · L 冲刺 · J 攻击）
+    jump: ["Space", "KeyW", "ArrowUp", "KeyK"],
+    dash: ["ShiftLeft", "ShiftRight", "KeyL"],
+    attack: ["KeyJ"],
+  },
+  p1: {
+    left: ["KeyA"],
+    right: ["KeyD"],
+    up: ["KeyW"],
+    down: ["KeyS"],
+    jump: ["KeyK"],
+    dash: ["KeyL"],
+    attack: ["KeyJ"],
+  },
+  p2: {
+    left: ["ArrowLeft"],
+    right: ["ArrowRight"],
+    up: ["ArrowUp"],
+    down: ["ArrowDown"],
+    jump: ["Digit2"],
+    dash: ["Digit3"],
+    attack: ["Digit1"],
+  },
+};
+
 let canvas, ctx;
 let els = {};
 let state = null;
@@ -43,6 +75,32 @@ let lastTs = 0;
 let running = false;
 let raf = 0;
 let listeners = [];
+let coopMode = false;
+let selectedCharIds = ["archer", "swordsman"];
+let pickSlot = 0; // 双人选角进度 0→P1, 1→P2
+
+function keyDown(codes) {
+  if (!codes) return false;
+  for (const c of codes) if (keys[c]) return true;
+  return false;
+}
+
+function alivePlayers() {
+  return (state?.players || []).filter((p) => !p.dead);
+}
+
+function nearestPlayer(x, y) {
+  let best = null;
+  let bestD = Infinity;
+  for (const p of alivePlayers()) {
+    const d = Math.hypot(p.x - x, p.y - y);
+    if (d < bestD) {
+      bestD = d;
+      best = p;
+    }
+  }
+  return best;
+}
 
 function on(target, type, fn) {
   target.addEventListener(type, fn);
@@ -307,52 +365,71 @@ function enemyAt(type, x, platformY, stage = 1) {
 
 let selectedCharId = "archer";
 
-function createState(stage = 1) {
-  const ch = getCharacter(selectedCharId);
+function makePlayer(charId, x, y, scheme) {
+  const ch = getCharacter(charId);
   const s = ch.platform;
+  return {
+    charId: ch.id,
+    attackType: ch.attackType,
+    weapon: s.weapon,
+    meleeRange: s.meleeRange || 0,
+    x,
+    y,
+    w: 22,
+    h: 40,
+    vx: 0,
+    vy: 0,
+    facing: 1,
+    anim: 0,
+    onGround: false,
+    jumpsLeft: MAX_JUMPS,
+    jumpHeld: false,
+    hp: s.maxHp,
+    maxHp: s.maxHp,
+    invuln: 0,
+    fireTimer: 0,
+    damage: s.damage,
+    critChance: CRIT_CHANCE,
+    critMult: CRIT_MULT,
+    fireCooldown: s.fireCooldown,
+    projectileSpeed: s.projectileSpeed,
+    dashes: START_DASHES,
+    maxDashes: START_DASHES,
+    dashTime: 0,
+    dashCooldown: 0,
+    dashDirX: 1,
+    dashDirY: 0,
+    dashHeld: false,
+    dashing: false,
+    dashLanded: true,
+    attackHeld: false,
+    scheme,
+    dead: false,
+    riding: null,
+  };
+}
+
+function createState(stage = 1) {
   const level = buildLevel(stage);
+  const players = [];
+  if (coopMode) {
+    players.push(makePlayer(selectedCharIds[0] || "archer", 80, 440, "p1"));
+    players.push(makePlayer(selectedCharIds[1] || "swordsman", 130, 440, "p2"));
+  } else {
+    players.push(makePlayer(selectedCharId, 80, 440, "solo"));
+  }
   return {
     level,
     stage,
     time: 0,
     kills: 0,
     score: 0,
-    camera: { x: 0, y: 0 },
-    player: {
-      charId: ch.id,
-      attackType: ch.attackType,
-      weapon: s.weapon,
-      meleeRange: s.meleeRange || 0,
-      x: 80,
-      y: 440,
-      w: 22,
-      h: 40,
-      vx: 0,
-      vy: 0,
-      facing: 1,
-      anim: 0,
-      onGround: false,
-      jumpsLeft: MAX_JUMPS,
-      jumpHeld: false,
-      hp: s.maxHp,
-      maxHp: s.maxHp,
-      invuln: 0,
-      fireTimer: 0,
-      damage: s.damage,
-      critChance: CRIT_CHANCE,
-      critMult: CRIT_MULT,
-      fireCooldown: s.fireCooldown,
-      projectileSpeed: s.projectileSpeed,
-      dashes: START_DASHES,
-      maxDashes: START_DASHES,
-      dashTime: 0,
-      dashCooldown: 0,
-      dashDirX: 1,
-      dashDirY: 0,
-      dashHeld: false,
-      dashing: false,
-      dashLanded: true,
+    coop: coopMode,
+    players,
+    get player() {
+      return this.players[0];
     },
+    camera: { x: 0, y: 0 },
     projectiles: [],
     enemyProjectiles: [],
     meleeFx: [],
@@ -367,10 +444,21 @@ function createState(stage = 1) {
 
 let seenGuide = new Set();
 
+function isCoopGuide() {
+  return !!(state?.coop || coopMode);
+}
+
+function anyAlive(pred) {
+  return (state?.players || []).some((p) => !p.dead && pred(p));
+}
+
 const GUIDE = [
   {
     id: "move",
-    text: "A / D 或方向键移动",
+    text: () =>
+      isCoopGuide()
+        ? "P1：A / D 移动　｜　P2：← / → 移动"
+        : "A / D 或方向键移动",
     hold: 0.45,
     max: 7,
     when: () => state.stage === 1 && state.time > 0.35,
@@ -378,7 +466,10 @@ const GUIDE = [
   },
   {
     id: "jump",
-    text: "空格、W 或 ↑ 跳跃，可从下方跳上平台，空中再跳一次",
+    text: () =>
+      isCoopGuide()
+        ? "P1：K 跳跃　｜　P2：数字键 2 跳跃（可二段跳，可从下方跳上平台）"
+        : "空格、W、↑ 或 K 跳跃，可从下方跳上平台，空中再跳一次",
     hold: 0.45,
     max: 8,
     when: () => state.stage === 1 && seenGuide.has("move") && !state.didJump,
@@ -386,8 +477,14 @@ const GUIDE = [
   },
   {
     id: "attack",
-    text: () =>
-      state.player.attackType === "melee" ? "鼠标瞄准，点击攻击" : "鼠标瞄准，点击射击",
+    text: () => {
+      if (isCoopGuide()) {
+        return "P1：J 攻击　｜　P2：数字键 1 攻击（方向键瞄准）";
+      }
+      return state.player.attackType === "melee"
+        ? "鼠标瞄准点击，或 J 攻击（方向键可瞄准）"
+        : "鼠标瞄准点击，或 J 射击（方向键可瞄准）";
+    },
     hold: 0.5,
     max: 8,
     when: () => state.stage === 1 && seenGuide.has("jump") && !state.didAttack,
@@ -395,15 +492,17 @@ const GUIDE = [
   },
   {
     id: "dash",
-    text: "Shift 朝按键方向冲刺。落地恢复，晶石可补一次",
+    text: () =>
+      isCoopGuide()
+        ? "P1：L 冲刺　｜　P2：数字键 3 冲刺（落地恢复，晶石可补）"
+        : "Shift 或 L 朝按键方向冲刺。落地恢复，晶石可补一次",
     hold: 0.6,
     max: 8,
     when: () =>
       state.stage === 1 &&
       seenGuide.has("attack") &&
-      state.player.dashes >= state.player.maxDashes &&
-      state.player.dashTime <= 0,
-    until: () => state.player.dashTime > 0 || state.player.dashing || state.player.dashes < state.player.maxDashes,
+      anyAlive((p) => p.dashes >= p.maxDashes && p.dashTime <= 0),
+    until: () => anyAlive((p) => p.dashTime > 0 || p.dashing || p.dashes < p.maxDashes),
   },
 ];
 
@@ -455,19 +554,38 @@ function updateGuide(dt) {
 }
 
 function updateHud() {
-  const p = state.player;
-  els.hpFill.style.transform = `scaleX(${Math.max(0, p.hp / p.maxHp)})`;
-  els.hpText.textContent = `${Math.ceil(p.hp)}`;
+  const list = state.players || [state.player];
+  const p1 = list[0];
+  const p2 = list[1];
+  if (p1) {
+    els.hpFill.style.transform = `scaleX(${Math.max(0, p1.hp / p1.maxHp)})`;
+    els.hpText.textContent = p1.dead ? "阵亡" : `${Math.ceil(p1.hp)}`;
+  }
+  if (els.p1Label) els.p1Label.textContent = state.coop ? "P1" : "生命";
+  if (els.p2Stat) {
+    if (state.coop && p2) {
+      els.p2Stat.classList.remove("hidden");
+      if (els.hp2Fill) els.hp2Fill.style.transform = `scaleX(${Math.max(0, p2.hp / p2.maxHp)})`;
+      if (els.hp2Text) els.hp2Text.textContent = p2.dead ? "阵亡" : `${Math.ceil(p2.hp)}`;
+    } else {
+      els.p2Stat.classList.add("hidden");
+    }
+  }
   els.scoreText.textContent = `分数 ${state.score}`;
   els.killText.textContent = `击杀 ${state.kills}`;
   if (els.stageText) els.stageText.textContent = `关卡 ${state.stage}/${MAX_STAGES}`;
-  if (els.dashText) els.dashText.textContent = `冲刺 ${p.dashes}/${p.maxDashes}`;
-  if (els.ammoText) {
-    if (p.attackType === "melee") {
-      els.ammoText.textContent = p.weapon === "bolt" ? "盾击" : "近战";
+  const focus = alivePlayers()[0] || p1;
+  if (els.dashText && focus) {
+    els.dashText.textContent = state.coop
+      ? `冲刺 ${p1?.dashes ?? 0}/${p1?.maxDashes ?? 1}`
+      : `冲刺 ${focus.dashes}/${focus.maxDashes}`;
+  }
+  if (els.ammoText && focus) {
+    if (focus.attackType === "melee") {
+      els.ammoText.textContent = focus.weapon === "bolt" ? "盾击" : "近战";
     } else {
       const names = { orb: "法球", arrow: "箭矢" };
-      els.ammoText.textContent = names[p.weapon] || "远程";
+      els.ammoText.textContent = names[focus.weapon] || "远程";
     }
   }
 }
@@ -491,9 +609,9 @@ function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-function damagePlayer(amount, knockVy) {
-  const p = state.player;
-  if (p.invuln > 0) return false;
+function damagePlayer(amount, knockVy, target = null) {
+  const p = target || state.player;
+  if (!p || p.dead || p.invuln > 0) return false;
   p.hp -= amount;
   p.invuln = 0.7;
   p.onGround = false;
@@ -502,35 +620,45 @@ function damagePlayer(amount, knockVy) {
   triggerShake(amount >= ROCK_DAMAGE ? 8 : 5, 0.18);
   if (p.hp <= 0) {
     p.hp = 0;
+    p.dead = true;
     updateHud();
-    endGame(false);
-    return true;
+    if (alivePlayers().length === 0) {
+      endGame(false);
+      return true;
+    }
   }
   return false;
 }
 
 function overlapPlayerRock(r) {
-  const p = state.player;
-  return rectOverlap(
-    p.x - p.w / 2,
-    p.y - p.h / 2,
-    p.w,
-    p.h,
-    r.x - r.w / 2,
-    r.y - r.h / 2,
-    r.w,
-    r.h
-  );
+  for (const p of alivePlayers()) {
+    if (
+      rectOverlap(
+        p.x - p.w / 2,
+        p.y - p.h / 2,
+        p.w,
+        p.h,
+        r.x - r.w / 2,
+        r.y - r.h / 2,
+        r.w,
+        r.h
+      )
+    ) {
+      return p;
+    }
+  }
+  return null;
 }
 
 function rockHitsPlayer(r) {
-  if (r.hit || !overlapPlayerRock(r)) return false;
+  if (r.hit) return false;
+  const p = overlapPlayerRock(r);
+  if (!p) return false;
   r.hit = true;
-  if (state.player.invuln > 0) return false;
-  const p = state.player;
+  if (p.invuln > 0) return false;
   const dir = Math.sign(p.x - r.x) || -1;
   p.x += dir * 16;
-  return damagePlayer(ROCK_DAMAGE, -420);
+  return damagePlayer(ROCK_DAMAGE, -420, p);
 }
 
 function settleRock(r) {
@@ -568,19 +696,17 @@ function rockImpact(r) {
 }
 
 function updateTraps(dt) {
-  const p = state.player;
-  if (p.invuln <= 0) {
+  for (const p of alivePlayers()) {
+    if (p.invuln > 0) continue;
     const left = p.x - p.w / 2;
     const top = p.y - p.h / 2;
     for (const s of state.level.spikes) {
-      if (
-        !rectOverlap(left, top, p.w, p.h, s.x + 2, s.y + 1, s.w - 4, s.h - 1)
-      ) {
+      if (!rectOverlap(left, top, p.w, p.h, s.x + 2, s.y + 1, s.w - 4, s.h - 1)) {
         continue;
       }
       const dir = Math.sign(p.x - (s.x + s.w / 2)) || -p.facing || -1;
       p.x += dir * 18;
-      if (damagePlayer(SPIKE_DAMAGE, -360)) return true;
+      if (damagePlayer(SPIKE_DAMAGE, -360, p)) return true;
       break;
     }
   }
@@ -590,10 +716,16 @@ function updateTraps(dt) {
     if (r.arm > 0) r.arm -= dt;
 
     if (r.phase === "idle") {
-      const inX = Math.abs(p.x - r.x) < r.triggerHalf;
-      // 只在落点平台附近触发，避免从平台下方跳过时提前砸落
-      const onPath = p.y > r.homeY - 10 && p.y < r.landY + 28;
-      if (r.arm <= 0 && inX && onPath) {
+      let trigger = false;
+      for (const p of alivePlayers()) {
+        const inX = Math.abs(p.x - r.x) < r.triggerHalf;
+        const onPath = p.y > r.homeY - 10 && p.y < r.landY + 28;
+        if (inX && onPath) {
+          trigger = true;
+          break;
+        }
+      }
+      if (r.arm <= 0 && trigger) {
         r.phase = "warn";
         r.timer = r.warnTime;
       }
@@ -729,18 +861,40 @@ function pushCritText(e) {
   });
 }
 
-function fireArrow() {
+function aimFromKeys(p) {
+  const c = CTRL[p.scheme] || CTRL.solo;
+  let x = 0;
+  let y = 0;
+  if (keyDown(c.left)) x -= 1;
+  if (keyDown(c.right)) x += 1;
+  if (keyDown(c.up)) y -= 1;
+  if (keyDown(c.down)) y += 1;
+  if (x === 0 && y === 0) return null;
+  return Math.atan2(y, x);
+}
+
+function fireArrow(p, aimAngle = null) {
+  if (!p || p.dead) return;
   state.didAttack = true;
-  const p = state.player;
   if (p.fireTimer > 0) return;
 
-  const worldMx = mouse.x + state.camera.x;
-  const worldMy = mouse.y + state.camera.y;
-  const angle = Math.atan2(worldMy - (p.y - 8), worldMx - p.x);
-  p.facing = Math.cos(angle) >= 0 ? 1 : -1;
+  let angle = aimAngle;
+  if (angle == null) {
+    const fromKeys = aimFromKeys(p);
+    if (fromKeys != null) {
+      // 方向键 / WASD 八向瞄准
+      angle = fromKeys;
+    } else if (p.scheme === "solo") {
+      const worldMx = mouse.x + state.camera.x;
+      const worldMy = mouse.y + state.camera.y;
+      angle = Math.atan2(worldMy - (p.y - 8), worldMx - p.x);
+    } else {
+      angle = p.facing >= 0 ? 0 : Math.PI;
+    }
+  }
+  if (Math.cos(angle) !== 0) p.facing = Math.cos(angle) >= 0 ? 1 : -1;
   p.fireTimer = p.fireCooldown || FIRE_COOLDOWN;
 
-  // 近战：仅攻击面前近距离敌人
   if (p.attackType === "melee") {
     const range = p.meleeRange || 65;
     state.meleeFx.push({
@@ -760,7 +914,6 @@ function fireArrow() {
       const dy = body.y - p.y;
       const d = Math.hypot(dx, dy);
       if (d > range + e.radius) continue;
-      // 大致朝向鼠标一侧
       const dot = dx * Math.cos(angle) + dy * Math.sin(angle);
       if (dot < -10) continue;
       const hit = rollCritDamage(p.damage);
@@ -814,28 +967,41 @@ function advanceStage() {
     endGame(true);
     return;
   }
-  const hp = state.player.hp;
   const score = state.score + 500;
   const kills = state.kills;
   const time = state.time;
   const next = state.stage + 1;
-  const kept = {
-    charId: state.player.charId,
-    attackType: state.player.attackType,
-    weapon: state.player.weapon,
-    meleeRange: state.player.meleeRange,
-    damage: state.player.damage,
-    critChance: state.player.critChance,
-    critMult: state.player.critMult,
-    fireCooldown: state.player.fireCooldown,
-    projectileSpeed: state.player.projectileSpeed,
-    maxHp: state.player.maxHp,
-  };
+  const keptPlayers = state.players.map((p) => ({
+    charId: p.charId,
+    attackType: p.attackType,
+    weapon: p.weapon,
+    meleeRange: p.meleeRange,
+    damage: p.damage,
+    critChance: p.critChance,
+    critMult: p.critMult,
+    fireCooldown: p.fireCooldown,
+    projectileSpeed: p.projectileSpeed,
+    maxHp: p.maxHp,
+    hp: p.dead ? 0 : Math.min(p.maxHp, p.hp + 20),
+    dead: p.dead,
+    scheme: p.scheme,
+  }));
+  // 若全灭则不应进关；复活阵亡队友一半血方便继续
+  for (const k of keptPlayers) {
+    if (k.dead) {
+      k.dead = false;
+      k.hp = Math.max(20, Math.round(k.maxHp * 0.5));
+    }
+  }
   state = createState(next);
-  Object.assign(state.player, kept);
-  state.player.hp = Math.min(kept.maxHp, hp + 20);
-  state.player.dashes = START_DASHES;
-  state.player.maxDashes = START_DASHES;
+  state.coop = coopMode;
+  for (let i = 0; i < state.players.length; i++) {
+    const k = keptPlayers[i];
+    if (!k) continue;
+    Object.assign(state.players[i], k);
+    state.players[i].dashes = START_DASHES;
+    state.players[i].maxDashes = START_DASHES;
+  }
   state.score = score;
   state.kills = kills;
   state.time = time;
@@ -845,17 +1011,19 @@ function advanceStage() {
   updateHud();
 }
 
-function wantsDash() {
-  return !!(keys["ShiftLeft"] || keys["ShiftRight"] || keys["KeyK"]);
+function wantsDash(p) {
+  const c = CTRL[p.scheme] || CTRL.solo;
+  return keyDown(c.dash);
 }
 
 function dashDirection(p) {
+  const c = CTRL[p.scheme] || CTRL.solo;
   let x = 0;
   let y = 0;
-  if (keys["KeyA"] || keys["ArrowLeft"]) x -= 1;
-  if (keys["KeyD"] || keys["ArrowRight"]) x += 1;
-  if (keys["KeyW"] || keys["ArrowUp"]) y -= 1;
-  if (keys["KeyS"] || keys["ArrowDown"]) y += 1;
+  if (keyDown(c.left)) x -= 1;
+  if (keyDown(c.right)) x += 1;
+  if (keyDown(c.up)) y -= 1;
+  if (keyDown(c.down)) y += 1;
   if (x === 0 && y === 0) x = p.facing || 1;
   const len = Math.hypot(x, y) || 1;
   return { x: x / len, y: y / len };
@@ -885,10 +1053,10 @@ function startDash(p) {
   }
 }
 
-function updateDash(dt) {
-  const p = state.player;
-  const wantDash = wantsDash();
-  const wantJump = keys["Space"] || keys["KeyW"] || keys["ArrowUp"];
+function updateDash(dt, p) {
+  const c = CTRL[p.scheme] || CTRL.solo;
+  const wantDash = wantsDash(p);
+  const wantJump = keyDown(c.jump);
   let dashedJump = false;
 
   if (p.dashCooldown > 0) p.dashCooldown -= dt;
@@ -940,44 +1108,38 @@ function updateDash(dt) {
 }
 
 function updatePickups(dt) {
-  const p = state.player;
-  for (const it of state.level.pickups) {
-    if (it.respawn > 0) {
-      it.respawn = Math.max(0, it.respawn - dt);
-      continue;
+  for (const p of alivePlayers()) {
+    for (const it of state.level.pickups) {
+      if (it.respawn > 0) continue;
+      const y = it.y + Math.sin(state.time * 3 + it.bob) * 5;
+      const dx = it.x - p.x;
+      const dy = y - (p.y - 8);
+      if (dx * dx + dy * dy > (it.r + 18) ** 2) continue;
+      if (p.dashes >= p.maxDashes) continue;
+      p.dashes = p.maxDashes;
+      it.respawn = 2.6;
+      addParticle(it.x, y, "#c45c26");
+      break;
     }
-    const y = it.y + Math.sin(state.time * 3 + it.bob) * 5;
-    const dx = it.x - p.x;
-    const dy = y - (p.y - 8);
-    if (dx * dx + dy * dy > (it.r + 18) ** 2) continue;
-    if (p.dashes >= p.maxDashes) continue;
-    p.dashes = p.maxDashes;
-    it.respawn = 2.6;
-    addParticle(it.x, y, "#c45c26");
+  }
+  for (const it of state.level.pickups) {
+    if (it.respawn > 0) it.respawn = Math.max(0, it.respawn - dt);
   }
 }
 
-function update(dt) {
-  const p = state.player;
-  state.time += dt;
-  if (state.shake > 0) {
-    state.shake -= dt;
-    if (state.shake <= 0) {
-      state.shake = 0;
-      state.shakeMag = 0;
-    }
-  }
+function updatePlayer(dt, p) {
+  if (p.dead) return false;
+  const c = CTRL[p.scheme] || CTRL.solo;
 
-  // 移动
   let mx = 0;
-  if (keys["KeyA"] || keys["ArrowLeft"]) mx -= 1;
-  if (keys["KeyD"] || keys["ArrowRight"]) mx += 1;
-  p.vx = mx * MOVE_SPEED;
+  if (keyDown(c.left)) mx -= 1;
+  if (keyDown(c.right)) mx += 1;
+  if (p.dashTime <= 0) p.vx = mx * MOVE_SPEED;
   if (mx !== 0 && p.dashTime <= 0) p.facing = mx > 0 ? 1 : -1;
 
-  const dashedJump = updateDash(dt);
+  const dashedJump = updateDash(dt, p);
 
-  const wantJump = keys["Space"] || keys["KeyW"] || keys["ArrowUp"];
+  const wantJump = keyDown(c.jump);
   if (!dashedJump && p.dashTime <= 0 && wantJump && !p.jumpHeld) {
     if (p.onGround || p.jumpsLeft > 0) {
       state.didJump = true;
@@ -986,7 +1148,6 @@ function update(dt) {
       p.onGround = false;
       p.jumpsLeft = Math.max(0, (isDouble ? p.jumpsLeft : MAX_JUMPS) - 1);
       if (isDouble) {
-        // 二段跳小火花
         for (let i = 0; i < 5; i++) {
           const a = Math.PI + (Math.random() - 0.5) * 1.2;
           const sp = 60 + Math.random() * 80;
@@ -1009,9 +1170,19 @@ function update(dt) {
 
   if (p.invuln > 0) p.invuln -= dt;
   if (p.fireTimer > 0) p.fireTimer -= dt;
-  if (mouse.down) fireArrow();
 
-  updateMovingPlatforms(dt);
+  // 攻击：单人可用鼠标或 J；双人用各自攻击键
+  if (p.scheme === "solo") {
+    if (mouse.down) fireArrow(p);
+  }
+  if (c.attack) {
+    const wantAtk = keyDown(c.attack);
+    if (wantAtk && !p.attackHeld) fireArrow(p);
+    p.attackHeld = wantAtk;
+  } else {
+    p.attackHeld = false;
+  }
+
   if (p.riding) p.x += p.riding.move.dx;
 
   const fell = resolvePlatforms(p, dt);
@@ -1034,11 +1205,12 @@ function update(dt) {
       }
     }
   }
-  updatePickups(dt);
+
   if (fell === "fell") {
-    p.hp -= 25;
+    if (damagePlayer(25, 0, p)) return true;
+    if (p.dead) return false;
     p.invuln = 0.8;
-    p.x = 80;
+    p.x = 80 + (p.scheme === "p2" ? 50 : 0);
     p.y = 440;
     p.vx = 0;
     p.vy = 0;
@@ -1048,32 +1220,38 @@ function update(dt) {
     p.dashing = false;
     p.dashes = p.maxDashes;
     addParticle(p.x, p.y, "#c23b3b");
-    if (p.hp <= 0) {
-      p.hp = 0;
-      updateHud();
-      endGame(false);
-      return;
+  }
+  return false;
+}
+
+function update(dt) {
+  state.time += dt;
+  if (state.shake > 0) {
+    state.shake -= dt;
+    if (state.shake <= 0) {
+      state.shake = 0;
+      state.shakeMag = 0;
     }
   }
 
+  updateMovingPlatforms(dt);
+
+  for (const p of state.players) {
+    if (updatePlayer(dt, p)) return;
+  }
+
+  updatePickups(dt);
   if (updateTraps(dt)) return;
 
-  // 通关检测
+  // 任一存活玩家碰终点即过关
   const g = state.level.goal;
-  if (
-    rectOverlap(
-      p.x - p.w / 2,
-      p.y - p.h / 2,
-      p.w,
-      p.h,
-      g.x,
-      g.y,
-      g.w,
-      g.h
-    )
-  ) {
-    advanceStage();
-    return;
+  for (const p of alivePlayers()) {
+    if (
+      rectOverlap(p.x - p.w / 2, p.y - p.h / 2, p.w, p.h, g.x, g.y, g.w, g.h)
+    ) {
+      advanceStage();
+      return;
+    }
   }
 
   // 箭矢
@@ -1081,7 +1259,7 @@ function update(dt) {
     const pr = state.projectiles[i];
     pr.x += pr.vx * dt;
     pr.y += pr.vy * dt;
-    pr.vy += 200 * dt; // 轻微下坠
+    pr.vy += 200 * dt;
     pr.angle = Math.atan2(pr.vy, pr.vx);
     pr.life -= dt;
 
@@ -1125,7 +1303,7 @@ function update(dt) {
     }
   }
 
-  // 敌人巡逻
+  // 敌人巡逻 / 追最近玩家
   for (const e of state.level.enemies) {
     e.anim += dt;
     if (e.hurt > 0) e.hurt -= dt;
@@ -1142,8 +1320,10 @@ function update(dt) {
     }
 
     const body = monsterBodyCenter(e);
-    const dx = p.x - body.x;
-    const dy = p.y - body.y;
+    const target = nearestPlayer(body.x, body.y);
+    if (!target) continue;
+    const dx = target.x - body.x;
+    const dy = target.y - body.y;
     const dist = Math.hypot(dx, dy);
 
     if (e.attack === "fireball") {
@@ -1175,17 +1355,25 @@ function update(dt) {
       e.facing = Math.sign(dx) || e.facing;
     }
 
-    if (dist < e.radius + 18 && p.invuln <= 0) {
-      p.hp -= e.damage;
-      p.invuln = 0.7;
-      p.vx = Math.sign(p.x - e.x) * 220;
-      p.vy = -280;
-      addParticle(p.x, p.y, "#c23b3b");
-      if (p.hp <= 0) {
-        p.hp = 0;
-        updateHud();
-        endGame(false);
-        return;
+    for (const p of alivePlayers()) {
+      const pdx = p.x - body.x;
+      const pdy = p.y - body.y;
+      const pd = Math.hypot(pdx, pdy);
+      if (pd < e.radius + 18 && p.invuln <= 0) {
+        p.hp -= e.damage;
+        p.invuln = 0.7;
+        p.vx = Math.sign(p.x - e.x) * 220;
+        p.vy = -280;
+        addParticle(p.x, p.y, "#c23b3b");
+        if (p.hp <= 0) {
+          p.hp = 0;
+          p.dead = true;
+          updateHud();
+          if (alivePlayers().length === 0) {
+            endGame(false);
+            return;
+          }
+        }
       }
     }
   }
@@ -1220,12 +1408,11 @@ function update(dt) {
   }
 
   syncCamera(dt);
-  updateGuide(dt);
+  if (!state.coop) updateGuide(dt);
   updateHud();
 }
 
 function updateEnemyProjectiles(dt) {
-  const p = state.player;
   const list = state.enemyProjectiles;
   for (let i = list.length - 1; i >= 0; i--) {
     const pr = list[i];
@@ -1244,13 +1431,19 @@ function updateEnemyProjectiles(dt) {
       }
     }
     if (!gone) {
-      const dx = p.x - pr.x;
-      const dy = p.y - 6 - pr.y;
-      if (dx * dx + dy * dy < (pr.radius + 12) ** 2) {
-        gone = true;
-        if (p.invuln <= 0) {
-          p.x += Math.sign(dx || 1) * 8;
-          if (damagePlayer(pr.damage, -240)) return true;
+      for (const p of alivePlayers()) {
+        const dx = p.x - pr.x;
+        const dy = p.y - 6 - pr.y;
+        if (dx * dx + dy * dy < (pr.radius + 12) ** 2) {
+          gone = true;
+          if (p.invuln <= 0) {
+            p.x += Math.sign(dx || 1) * 8;
+            if (damagePlayer(pr.damage, -240, p)) {
+              list.splice(i, 1);
+              return true;
+            }
+          }
+          break;
         }
       }
     }
@@ -1262,12 +1455,17 @@ function updateEnemyProjectiles(dt) {
 function syncCamera(dt, instant = false) {
   const viewW = window.innerWidth;
   const viewH = window.innerHeight;
-  const p = state.player;
-  const targetX = p.x - viewW * 0.38;
-  const targetY = p.y - viewH * 0.58;
+  const alive = alivePlayers();
+  let focusX = state.player.x;
+  let focusY = state.player.y;
+  if (alive.length > 0) {
+    focusX = alive.reduce((s, p) => s + p.x, 0) / alive.length;
+    focusY = alive.reduce((s, p) => s + p.y, 0) / alive.length;
+  }
+  const targetX = focusX - viewW * 0.38;
+  const targetY = focusY - viewH * 0.58;
   const maxX = Math.max(0, state.level.width - viewW);
   const maxY = Math.max(0, state.level.height - viewH);
-  // 视口比关卡更高时，把关卡垂直居中
   const minY = viewH > state.level.height ? (state.level.height - viewH) / 2 : 0;
   const tx = Math.max(0, Math.min(maxX, targetX));
   const ty = Math.max(minY, Math.min(maxY || minY, targetY));
@@ -1534,10 +1732,21 @@ function render() {
     }
   }
 
-  const p = state.player;
+  const alive = alivePlayers();
   drawDashTrail(sx, sy);
-  if (!(p.invuln > 0 && Math.floor(p.invuln * 18) % 2 === 0)) {
+  for (const p of state.players) {
+    if (p.dead) continue;
+    if (p.invuln > 0 && Math.floor(p.invuln * 18) % 2 === 0) continue;
     drawCharacter(ctx, p.charId || "archer", sx(p.x), sy(p.y), p.facing, p.anim);
+    if (state.coop) {
+      ctx.fillStyle = p.scheme === "p1" ? "#c45c26" : "#3a6ea5";
+      ctx.font = "bold 11px Songti SC, serif";
+      ctx.textAlign = "center";
+      ctx.fillText(p.scheme === "p1" ? "P1" : "P2", sx(p.x), sy(p.y) - 48);
+    }
+  }
+  if (alive.length === 0 && state.player) {
+    // 全灭后仍可能闪一帧
   }
 
   for (const pr of state.projectiles) {
@@ -1608,13 +1817,14 @@ function loop(ts) {
 }
 
 function beginRun(charId) {
-  if (charId) selectedCharId = charId;
+  if (charId && !coopMode) selectedCharId = charId;
   loadMonsters().then(() => {
     state = createState(1);
     running = true;
     els.overlay.classList.add("hidden");
     els.charSelect?.classList.add("hidden");
     els.gameover.classList.add("hidden");
+    hideJoin2P();
     syncCamera(null, true);
     resetGuide();
     updateHud();
@@ -1624,15 +1834,65 @@ function beginRun(charId) {
   });
 }
 
+function hideJoin2P() {
+  els.btnJoin2P?.classList.add("hidden");
+  els.btnJoin2P?.classList.remove("active");
+}
+
+function toggleJoin2P() {
+  if (coopMode) {
+    // 取消双人，回到单人选角
+    coopMode = false;
+    pickSlot = 0;
+    if (els.overlaySub) {
+      els.overlaySub.textContent = "A/D 移动 · 空格/W/↑/K 跳跃 · Shift/L 冲刺 · 鼠标或 J 攻击";
+    }
+  } else {
+    coopMode = true;
+    pickSlot = 0;
+    if (els.overlaySub) {
+      els.overlaySub.textContent =
+        "P1：WASD 移动 · K 跳 · L 冲刺 · J 攻击　｜　P2：方向键移动 · 2 跳 · 3 冲刺 · 1 攻击";
+    }
+  }
+  openCharSelect();
+}
+
 function openCharSelect() {
   running = false;
   cancelAnimationFrame(raf);
   els.overlay.classList.add("hidden");
   els.gameover.classList.add("hidden");
   hideGuide();
-  showCharSelect(els.charSelect, els.charGrid, "平台模式 · 选择角色", (id) => {
-    beginRun(id);
-  });
+
+  let title = "平台模式 · 选择角色";
+  if (coopMode) {
+    title = pickSlot === 0 ? "双人模式 · 选择玩家1" : "双人模式 · 选择玩家2";
+  }
+
+  showCharSelect(
+    els.charSelect,
+    els.charGrid,
+    title,
+    (id) => {
+      if (coopMode) {
+        selectedCharIds[pickSlot] = id;
+        if (pickSlot === 0) {
+          pickSlot = 1;
+          openCharSelect();
+          return;
+        }
+        beginRun();
+      } else {
+        beginRun(id);
+      }
+    },
+    {
+      // 选 P2 时隐藏按钮，避免中途取消导致状态乱
+      showJoin2P: !(coopMode && pickSlot === 1),
+      joinActive: coopMode,
+    }
+  );
 }
 
 export function startPlatform(options) {
@@ -1641,17 +1901,27 @@ export function startPlatform(options) {
   els = options.els;
   keys = Object.create(null);
   mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2, down: false };
+  coopMode = false;
+  pickSlot = 0;
 
   els.hud.classList.remove("hidden");
   els.overlay.classList.add("hidden");
   els.gameover.classList.add("hidden");
+  els.p2Stat?.classList.add("hidden");
+  if (els.overlaySub) {
+    els.overlaySub.textContent = "A/D 移动 · 空格/W/↑/K 跳跃 · Shift/L 冲刺 · 鼠标或 J 攻击";
+  }
 
   resize();
   on(window, "resize", resize);
 
   on(window, "keydown", (e) => {
     keys[e.code] = true;
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
+    if (
+      ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Digit1", "Digit2", "Digit3"].includes(
+        e.code
+      )
+    ) {
       e.preventDefault();
     }
   });
@@ -1667,7 +1937,7 @@ export function startPlatform(options) {
       mouse.down = true;
       mouse.x = e.clientX;
       mouse.y = e.clientY;
-      if (running) fireArrow();
+      if (running && !coopMode && state?.player) fireArrow(state.player);
     }
   });
   on(window, "mouseup", (e) => {
@@ -1678,8 +1948,13 @@ export function startPlatform(options) {
     keys = Object.create(null);
   });
 
+  if (els.btnJoin2P) els.btnJoin2P.onclick = toggleJoin2P;
   els.btnStart.onclick = openCharSelect;
-  els.btnRestart.onclick = openCharSelect;
+  els.btnRestart.onclick = () => {
+    coopMode = false;
+    pickSlot = 0;
+    openCharSelect();
+  };
   openCharSelect();
 }
 
@@ -1691,5 +1966,7 @@ export function stopPlatform() {
   els.overlay?.classList.add("hidden");
   els.gameover?.classList.add("hidden");
   els.charSelect?.classList.add("hidden");
+  els.p2Stat?.classList.add("hidden");
+  hideJoin2P();
   hideGuide();
 }

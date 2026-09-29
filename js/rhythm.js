@@ -23,8 +23,8 @@ const LEVELS = [
   {
     id: "chop",
     name: "斩台惊魂",
-    desc: "躲开刽子手砍头 · 空格缩头",
-    hint: "刀落下前缩头 · 失手一次即失败",
+    desc: "躲开刽子手砍头 · 空格缩身",
+    hint: "刀落下前缩身 · 失手一次即失败",
     beats: 14,
   },
   {
@@ -235,7 +235,7 @@ function drawLevelPreview(g, id, w, h) {
     drawRunner(g, w * 0.45, h * 0.55, 0.85, 0.5);
   } else if (id === "chop") {
     drawBlock(g, w * 0.38, h * 0.74, 0.75);
-    drawVictimHead(g, w * 0.38, h * 0.58, 0.75, 0);
+    drawVictimHead(g, w * 0.38, h * 0.58, 0.75);
     drawExecutioner(g, w * 0.58, h * 0.64, 0.78, 0.95);
   } else {
     drawArcherFG(g, w * 0.28, h * 0.78, 0.7, 0.4);
@@ -514,7 +514,7 @@ function update(dt) {
   if (state.sonHit > 0) state.sonHit -= dt;
   if (state.jump > 0) state.jump -= dt;
   if (state.chopSwing > 0) state.chopSwing -= dt;
-  // 缩头平滑回弹，不瞬切
+  // 缩身平滑回弹，不瞬切
   if (state.headPullAmt > 0 && !state.headFallen) {
     state.headPullAmt = Math.max(0, state.headPullAmt - dt * 1.6);
   }
@@ -836,17 +836,15 @@ function drawBlock(ctx, x, y, s) {
   ctx.restore();
 }
 
-function drawVictimHead(ctx, x, y, s, pull, fall = null) {
+function drawVictimHead(ctx, x, y, s, fall = null) {
   ctx.save();
   if (fall) {
     ctx.translate(x + fall.x, y + fall.y);
     ctx.rotate(fall.rot);
     ctx.scale(s, s);
   } else {
-    // 往后缩：缩小头圆模拟远离镜头，不往下挪
     ctx.translate(x, y);
-    const shrink = 1 - Math.min(1, Math.max(0, pull)) * 0.55;
-    ctx.scale(s * shrink, s * shrink);
+    ctx.scale(s, s);
   }
   ctx.strokeStyle = "#1a1a1a";
   ctx.fillStyle = "#1a1a1a";
@@ -862,6 +860,20 @@ function drawVictimHead(ctx, x, y, s, pull, fall = null) {
     ctx.lineTo(Math.cos(a) * 11, Math.sin(a) * 11);
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+
+function drawVictim(ctx, headX, headY, pull) {
+  const shrink = 1 - Math.min(1, Math.max(0, pull)) * 0.55;
+  const footX = headX;
+  const footY = headY + 50;
+  ctx.save();
+  ctx.translate(footX, footY);
+  ctx.scale(shrink, shrink);
+  ctx.translate(-footX, -footY);
+  drawBlock(ctx, footX, footY, 1.5);
+  drawVictimHead(ctx, headX, headY, 1.4);
   ctx.restore();
 }
 
@@ -1043,12 +1055,12 @@ function renderPlay() {
     }
     drawRunner(ctx, runnerX, cy + 20, 1.4, state.jump, state.runnerFall);
   } else if (id === "chop") {
-    drawBlock(ctx, cx - 35, cy + 60, 1.5);
-    // 头：缩头 / 失败掉落
+    // 身子连头一起缩小；失手时头飞出，身子留在原地
     if (state.headFallen && state.headFall) {
-      drawVictimHead(ctx, cx - 35, cy + 10, 1.4, 0, state.headFall);
+      drawBlock(ctx, cx - 35, cy + 60, 1.5);
+      drawVictimHead(ctx, cx - 35, cy + 10, 1.4, state.headFall);
     } else {
-      drawVictimHead(ctx, cx - 35, cy + 10, 1.4, state.headPullAmt);
+      drawVictim(ctx, cx - 35, cy + 10, state.headPullAmt);
     }
     // 刽子手：失败时停在落刀姿态
     let swing = 0;
@@ -1200,6 +1212,8 @@ function loop(ts) {
   }
   raf = requestAnimationFrame(loop);
 }
+
+window.__rhythm = () => state;
 
 export function startRhythm(options) {
   canvas = options.canvas;

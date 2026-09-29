@@ -42,9 +42,27 @@ function paintPreview(canvas, host, id) {
   drawCharacter(ctx, id, w / 2, h * 0.62, 1, 0.4);
 }
 
-export function showCharSelect(overlayEl, gridEl, title, onPick) {
-  const titleEl = overlayEl.querySelector("h2");
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.showJoin2P] 是否显示「加入2P」
+ * @param {boolean} [opts.joinActive] 当前是否已进入双人选角
+ */
+export function showCharSelect(overlayEl, gridEl, title, onPick, opts = {}) {
+  const titleEl = overlayEl.querySelector("#charselect-title") || overlayEl.querySelector("h2");
   if (titleEl) titleEl.textContent = title;
+
+  const joinBtn = overlayEl.querySelector("#btn-join-2p");
+  if (joinBtn) {
+    if (opts.showJoin2P) {
+      joinBtn.classList.remove("hidden");
+      joinBtn.classList.toggle("active", !!opts.joinActive);
+      joinBtn.textContent = opts.joinActive ? "取消2P" : "加入2P";
+    } else {
+      joinBtn.classList.add("hidden");
+      joinBtn.classList.remove("active");
+    }
+  }
+
   mountCharSelect(gridEl, (id) => {
     overlayEl.classList.add("hidden");
     onPick(id);
