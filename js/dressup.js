@@ -102,12 +102,22 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function loadImage(src) {
+function loadImage(src, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(src));
-    img.src = encodeURI(src) + "?v=1";
+    const timer = setTimeout(() => {
+      img.onload = img.onerror = null;
+      reject(new Error("timeout: " + src));
+    }, timeoutMs);
+    img.onload = () => {
+      clearTimeout(timer);
+      resolve(img);
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(src));
+    };
+    img.src = encodeURI(src) + "?v=2";
   });
 }
 
@@ -575,14 +585,6 @@ function render() {
 
   drawPaperBg(0, 0, viewW, viewH);
 
-  ctx.fillStyle = "#1a1a1a";
-  ctx.font = "bold 28px Songti SC, serif";
-  ctx.textAlign = "left";
-  ctx.fillText("换装模式", 24, 36);
-  ctx.font = "14px Songti SC, serif";
-  ctx.fillStyle = "rgba(26,26,26,0.55)";
-  ctx.fillText("点选右侧分类与单品 · 装点这位无面仕女", 150, 34);
-
   const st = layout.stage;
   // 舞台框
   ctx.save();
@@ -672,7 +674,11 @@ function render() {
   if (state.toast > 0) {
     ctx.globalAlpha = Math.min(1, state.toast);
     ctx.fillStyle = "rgba(26,26,26,0.75)";
-    const msg = state.toastMsg || "装扮已更新";
+    const msg = state.toastMsg || "";
+    if (!msg) {
+      ctx.globalAlpha = 1;
+      return;
+    }
     const tw = Math.max(160, msg.length * 14 + 40);
     ctx.fillRect(viewW / 2 - tw / 2, 56, tw, 32);
     ctx.fillStyle = "#e8e0d2";
@@ -736,8 +742,6 @@ function onPointer(x, y) {
   for (const it of layout.items) {
     if (hit(x, y, it)) {
       state.picks[state.category] = it.id;
-      state.toastMsg = "装扮已更新";
-      state.toast = 0.9;
       return;
     }
   }
@@ -754,8 +758,6 @@ function onPointer(x, y) {
       hand: "fan",
       bg: "paper",
     };
-    state.toastMsg = "装扮已更新";
-    state.toast = 0.9;
   }
 }
 

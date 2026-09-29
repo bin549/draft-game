@@ -675,7 +675,16 @@ html.is-mobile #mobile-gate {
 
 .hud .btn-back {
   pointer-events: auto;
-  margin-left: 0.5rem;
+  margin-left: auto;
+}
+
+.hud-dressup .stat {
+  max-width: min(70vw, 36rem);
+}
+
+.hud-dressup .stat span:last-child {
+  opacity: 0.65;
+  font-size: 0.92em;
 }
 
 .plat-hint {
@@ -777,6 +786,40 @@ html.is-mobile #mobile-gate {
   place-items: center;
   background: rgba(42, 40, 36, 0.55);
   backdrop-filter: blur(3px);
+}
+
+.loading-screen {
+  z-index: 9999;
+  background: rgba(232, 228, 216, 0.96);
+}
+
+.loading-panel {
+  min-width: 220px;
+  padding: 1.6rem 2rem;
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 0.9rem;
+  border: 3px solid rgba(26, 26, 26, 0.15);
+  border-top-color: #1a1a1a;
+  border-radius: 50%;
+  animation: loading-spin 0.8s linear infinite;
+}
+
+.loading-text {
+  margin: 0;
+  font-family: "Songti SC", "Noto Serif SC", serif;
+  font-size: 1.05rem;
+  color: #1a1a1a;
+  letter-spacing: 0.04em;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .panel {

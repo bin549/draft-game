@@ -52,12 +52,22 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-function loadImage(src) {
+function loadImage(src, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error(src));
-    img.src = encodeURI(src) + (src.includes("?") ? "&" : "?") + "v=2";
+    const timer = setTimeout(() => {
+      img.onload = img.onerror = null;
+      reject(new Error("timeout: " + src));
+    }, timeoutMs);
+    img.onload = () => {
+      clearTimeout(timer);
+      resolve(img);
+    };
+    img.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(src));
+    };
+    img.src = encodeURI(src) + (src.includes("?") ? "&" : "?") + "v=3";
   });
 }
 

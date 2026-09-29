@@ -3,10 +3,10 @@ import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
 import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
-import { startIcefire, stopIcefire } from "./icefire.js?v=20260929m";
-import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260929h";
-import { startThief, stopThief } from "./thief.js?v=20260929g";
-import { startDressup, stopDressup } from "./dressup.js?v=20260929g";
+import { startIcefire, stopIcefire } from "./icefire.js?v=20260929n";
+import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260929i";
+import { startThief, stopThief } from "./thief.js?v=20260929h";
+import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
@@ -14,10 +14,31 @@ import { loadMonsters } from "./monsters.js";
 const menu = document.getElementById("menu");
 const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
+const loadingScreen = document.getElementById("loading-screen");
 
 const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup"];
 
 let activeMode = null;
+
+function showLoading(text = "正在加载中…") {
+  const label = loadingScreen?.querySelector(".loading-text");
+  if (label) label.textContent = text;
+  if (loadingScreen) {
+    loadingScreen.classList.remove("hidden");
+    loadingScreen.style.display = "grid";
+  }
+}
+
+function hideLoading() {
+  if (loadingScreen) {
+    loadingScreen.classList.add("hidden");
+    loadingScreen.style.display = "none";
+  }
+}
+
+function waitFrame() {
+  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+}
 
 function hideAllModeUi() {
   for (const id of MODE_IDS) {
@@ -35,6 +56,7 @@ function hideAllModeUi() {
 
 function showMenu() {
   stopActive();
+  hideLoading();
   stage.classList.add("hidden");
   menu.classList.remove("hidden");
   drawMenuPreviews();
@@ -53,14 +75,26 @@ function stopActive() {
   activeMode = null;
 }
 
-function enterMode(mode) {
+async function enterMode(mode) {
   if (document.documentElement.classList.contains("is-mobile")) return;
   stopActive();
   hideAllModeUi();
+
+  const needsLoad = ["dressup", "thief", "icefire", "towerfall"].includes(mode);
+  // 先盖住菜单再拉资源，避免露出空白舞台
+  if (needsLoad) {
+    showLoading("正在加载中…");
+    await waitFrame();
+  } else {
+    hideLoading();
+  }
+
   menu.classList.add("hidden");
   stage.classList.remove("hidden");
   activeMode = mode;
 
+  let loaded = false;
+  try {
   if (mode === "survivor") {
     startSurvivor({
       canvas,
@@ -177,7 +211,7 @@ function enterMode(mode) {
       },
     });
   } else if (mode === "icefire") {
-    startIcefire({
+    await startIcefire({
       canvas,
       els: {
         hud: document.getElementById("hud-icefire"),
@@ -197,7 +231,7 @@ function enterMode(mode) {
       },
     });
   } else if (mode === "towerfall") {
-    startTowerfall({
+    await startTowerfall({
       canvas,
       els: {
         hud: document.getElementById("hud-towerfall"),
@@ -216,7 +250,7 @@ function enterMode(mode) {
       },
     });
   } else if (mode === "thief") {
-    startThief({
+    await startThief({
       canvas,
       els: {
         hud: document.getElementById("hud-thief"),
@@ -233,7 +267,7 @@ function enterMode(mode) {
       },
     });
   } else if (mode === "dressup") {
-    startDressup({
+    await startDressup({
       canvas,
       els: {
         hud: document.getElementById("hud-dressup"),
@@ -241,6 +275,19 @@ function enterMode(mode) {
         gameover: document.getElementById("gameover-dressup"),
       },
     });
+  }
+  if (needsLoad) await waitFrame();
+  loaded = true;
+  } catch (err) {
+    console.error(err);
+    stopActive();
+    stage.classList.add("hidden");
+    menu.classList.remove("hidden");
+    drawMenuPreviews();
+    showLoading("加载失败，请刷新重试");
+    setTimeout(hideLoading, 1800);
+  } finally {
+    if (needsLoad && loaded) hideLoading();
   }
 }
 
@@ -838,3 +885,4 @@ if (document.documentElement.classList.contains("is-mobile")) {
 
 loadMonsters(); // 预加载局内位图怪，菜单预览仍用矢量
 drawMenuPreviews();
+hideLoading();
