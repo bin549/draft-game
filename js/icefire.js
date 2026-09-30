@@ -6,11 +6,12 @@
 
 const META_SRC = "assets/player/icefire/meta.json";
 const GRAVITY = 1950;
-const JUMP_V = -680;
+const JUMP_V = -820;
 const MOVE_SPEED = 220;
 const PUSH_SPEED = 145;
 const ANIM_RUN_FPS = 12;
 const ANIM_JUMP_FPS = 14;
+const ANIM_IDLE_FPS = 8;
 const INVULN = 1.0;
 const MAX_STAGES = 3;
 const DRAW_SCALE = 0.48;
@@ -18,6 +19,8 @@ const BODY_W = 26;
 const BODY_H = 48;
 const BOX_SIZE = 40;
 const WALL = 36;
+/** 陷阱液面高度（底下仍是地面砖） */
+const LIQ_DEPTH = 16;
 
 const CTRL = {
   ice: {
@@ -98,17 +101,15 @@ async function ensureAssets() {
   if (assets) return assets;
   if (loadPromise) return loadPromise;
   loadPromise = (async () => {
-    const meta = await fetch(META_SRC).then((r) => r.json());
+    const meta = await fetch(META_SRC + "?v=20260930uniscale").then((r) => r.json());
     assets = {
       blue: {
         ...meta.blue,
-        animImg: await loadImage(meta.blue.anim),
-        idleImg: await loadImage(meta.blue.idle),
+        sheetImg: await loadImage(meta.blue.sheet + "?v=10"),
       },
       red: {
         ...meta.red,
-        animImg: await loadImage(meta.red.anim),
-        idleImg: await loadImage(meta.red.idle),
+        sheetImg: await loadImage(meta.red.sheet + "?v=10"),
       },
     };
     return assets;
@@ -158,32 +159,33 @@ function gate(id, x, platY, h = 72, fromButton = null) {
   };
 }
 
-/** 从地面实心中挖掉陷阱占用的横段，避免砖面与池子重叠 */
-function carveLiquidsFromSolids(solids, liquids) {
-  let out = solids.map((s) => ({ ...s }));
+/** 陷阱底下保留/补齐地面，不再整块挖空 */
+function ensureGroundUnderLiquids(solids, liquids) {
+  const out = solids.map((s) => ({ ...s }));
   for (const liq of liquids) {
-    const lx0 = liq.x;
-    const lx1 = liq.x + liq.w;
-    const ly0 = liq.y - 2;
-    const ly1 = liq.y + liq.h + 2;
-    const next = [];
-    for (const s of out) {
-      const overlaps =
-        s.x < lx1 && s.x + s.w > lx0 && s.y < ly1 && s.y + s.h > ly0;
-      if (!overlaps) {
-        next.push(s);
-        continue;
-      }
-      // 左右保留，中间挖空（陷阱区）
-      const leftW = lx0 - s.x;
-      if (leftW > 6) next.push({ x: s.x, y: s.y, w: leftW, h: s.h });
-      const rightX = lx1;
-      const rightW = s.x + s.w - rightX;
-      if (rightW > 6) next.push({ x: rightX, y: s.y, w: rightW, h: s.h });
+    const covered = out.some(
+      (s) =>
+        s.y <= liq.y + 2 &&
+        s.y + s.h >= liq.y + liq.h - 2 &&
+        s.x <= liq.x + 2 &&
+        s.x + s.w >= liq.x + liq.w - 2
+    );
+    if (!covered) {
+      out.push({ x: liq.x, y: liq.y, w: liq.w, h: liq.h });
     }
-    out = next;
   }
   return out;
+}
+
+function liquidSurface(liq) {
+  const h = Math.min(LIQ_DEPTH, liq.h);
+  return { x: liq.x, y: liq.y, w: liq.w, h };
+}
+
+/** 伤害判定：贴着液面才算踩中；腾空越过液面以上不受伤 */
+function liquidHitbox(liq) {
+  const h = Math.min(LIQ_DEPTH, liq.h) + 6;
+  return { x: liq.x, y: liq.y - 2, w: liq.w, h };
 }
 
 function buildLevel(stage) {
@@ -196,7 +198,7 @@ function buildLevel(stage) {
 
   let level;
   if (stage === 1) {
-    // 教学关：左右竖井下落 · 本色桥只用于横穿 · 池子挖空地面
+    // 教学关：左右竖井下落 · 陷阱仅液面，底下仍是地面
     level = {
       width: W,
       height: H,
@@ -402,7 +404,7 @@ function buildLevel(stage) {
     };
   }
 
-  level.solids = carveLiquidsFromSolids(level.solids, level.liquids);
+  level.solids = ensureGroundUnderLiquids(level.solids, level.liquids);
   return level;
 }
 
@@ -494,14 +496,6 @@ function solidBlocks() {
 
 function resolveEntity(ent, dt, ignoreBox = null) {
   const blocks = solidBlocks().filter((b) => b.box !== ignoreBox);
-  for (const liq of state.level.liquids) {
-    // 箱子不浮在液体上；角色安全液体可站
-    if (ent.isBox) continue;
-    const safe =
-      (liq.type === "water" && ent.kind === "ice") ||
-      (liq.type === "lava" && ent.kind === "fire");
-    if (safe) blocks.push({ x: liq.x, y: liq.y + 2, w: liq.w, h: 10, move: null });
-  }
 
   ent.onGround = false;
   ent.vy += GRAVITY * dt;
@@ -519,11 +513,34 @@ function resolveEntity(ent, dt, ignoreBox = null) {
   for (const pl of blocks) {
     if (!rectOverlap(left, top, w, h, pl.x, pl.y, pl.w, pl.h)) continue;
     const prevBottom = (ent.isBox ? ent.y : ent.y - hh) - ent.vy * dt + h;
+    const feet = ent.isBox ? ent.y + h : ent.y + hh;
+    // 上跳蹭到平台上沿时优先落板，避免卡在角上
+    if (
+      !ent.isBox &&
+      ent.vy < 0 &&
+      feet > pl.y - 4 &&
+      feet < pl.y + 22 &&
+      ent.y <= pl.y + 8
+    ) {
+      ent.y = pl.y - hh;
+      ent.vy = 0;
+      ent.onGround = true;
+      left = ent.x - hw;
+      top = ent.y - hh;
+      continue;
+    }
     if (ent.vy < 0 || prevBottom > pl.y + 14) {
       if (ent.vy < 0) {
         const overlapL = left + w - pl.x;
         const overlapR = pl.x + pl.w - left;
-        if (overlapL < overlapR && overlapL < w * 0.75) {
+        const overlapT = top + h - pl.y;
+        const overlapB = pl.y + pl.h - top;
+        // 重叠更像顶头时做天花板，否则侧推
+        if (overlapB <= overlapL && overlapB <= overlapR && overlapB <= overlapT) {
+          if (ent.isBox) ent.y = pl.y + pl.h;
+          else ent.y = pl.y + pl.h + hh;
+          ent.vy = 0;
+        } else if (overlapL < overlapR && overlapL < w * 0.75) {
           if (ent.isBox) ent.x = pl.x - w;
           else ent.x = pl.x - hw;
           ent.vx = Math.min(0, ent.vx);
@@ -722,7 +739,11 @@ function updatePlayer(dt, p) {
   const top = p.y - p.h / 2;
 
   for (const liq of state.level.liquids) {
-    if (!rectOverlap(left, top + p.h * 0.4, p.w, p.h * 0.6, liq.x, liq.y, liq.w, liq.h)) continue;
+    const feet = p.y + p.h / 2;
+    // 脚已明显高于液面 = 跳过去，不判伤
+    if (feet < liq.y - 8) continue;
+    const hit = liquidHitbox(liq);
+    if (!rectOverlap(left, feet - 6, p.w, 10, hit.x, hit.y, hit.w, hit.h)) continue;
     const safe =
       (liq.type === "water" && p.kind === "ice") ||
       (liq.type === "lava" && p.kind === "fire");
@@ -753,23 +774,34 @@ function updatePlayer(dt, p) {
   if (!p.onGround) {
     p.anim = "jump";
     p.animT += dt;
+    const jumpFrames = p.sheet.jumpFrames || 8;
     if (p.animT >= 1 / ANIM_JUMP_FPS) {
       p.animT = 0;
-      if (p.vy < -80) p.frame = Math.min(3, p.frame + 1);
-      else if (p.vy > 80) p.frame = Math.min(7, Math.max(4, p.frame + 1));
-      else p.frame = 3;
+      const mid = Math.floor((jumpFrames - 1) / 2);
+      if (p.vy < -80) p.frame = Math.min(mid, p.frame + 1);
+      else if (p.vy > 80) p.frame = Math.min(jumpFrames - 1, Math.max(mid + 1, p.frame + 1));
+      else p.frame = mid;
     }
   } else if (Math.abs(p.vx) > 15) {
     p.anim = "run";
     p.animT += dt;
+    const runFrames = p.sheet.runFrames || p.sheet.cols || 8;
     if (p.animT >= 1 / ANIM_RUN_FPS) {
       p.animT = 0;
-      p.frame = (p.frame + 1) % 8;
+      p.frame = (p.frame + 1) % runFrames;
     }
   } else {
-    p.anim = "idle";
-    p.frame = 0;
-    p.animT = 0;
+    if (p.anim !== "idle") {
+      p.anim = "idle";
+      p.frame = 0;
+      p.animT = 0;
+    }
+    p.animT += dt;
+    const idleFrames = p.sheet.idleFrames || 1;
+    if (p.animT >= 1 / ANIM_IDLE_FPS) {
+      p.animT = 0;
+      p.frame = (p.frame + 1) % idleFrames;
+    }
   }
 }
 
@@ -882,25 +914,58 @@ function liquidColors(type) {
 
 function drawLiquid(liq, t) {
   const c = liquidColors(liq.type);
-  // 不透明铺满，避免底下砖纹透出
+  const depth = Math.min(LIQ_DEPTH, liq.h);
+  const x0 = liq.x;
+  const x1 = liq.x + liq.w;
+  const top = liq.y;
+  const bot = liq.y + depth;
+
+  // 不透明嵌进砖面：盖住顶边黑线，看起来是挖在地面里而非叠在上面
   ctx.fillStyle = c.b;
-  ctx.fillRect(liq.x, liq.y, liq.w, liq.h);
-  const g = ctx.createLinearGradient(0, liq.y, 0, liq.y + liq.h);
+  ctx.fillRect(x0, top - 1.5, liq.w, depth + 1.5);
+
+  const g = ctx.createLinearGradient(0, top, 0, bot);
   g.addColorStop(0, c.a);
+  g.addColorStop(0.65, c.b);
   g.addColorStop(1, c.b);
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.moveTo(liq.x, liq.y + 4);
-  for (let x = 0; x <= liq.w; x += 5) {
-    ctx.lineTo(liq.x + x, liq.y + Math.sin(x * 0.22 + t * 5 + liq.x) * 2.8);
+  ctx.moveTo(x0, bot);
+  ctx.lineTo(x0, top + 1);
+  for (let x = 0; x <= liq.w; x += 3) {
+    ctx.lineTo(x0 + x, top + Math.sin(x * 0.3 + t * 5 + liq.x) * 2.2);
   }
-  ctx.lineTo(liq.x + liq.w, liq.y + liq.h);
-  ctx.lineTo(liq.x, liq.y + liq.h);
+  ctx.lineTo(x1, bot);
   ctx.closePath();
   ctx.fill();
+
+  // 坑壁：左右竖边接到砖里
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x0 + 0.5, top - 1);
+  ctx.lineTo(x0 + 0.5, bot);
+  ctx.moveTo(x1 - 0.5, top - 1);
+  ctx.lineTo(x1 - 0.5, bot);
+  ctx.stroke();
+
+  // 液面描边（取代该段平台顶边）
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(liq.x + 0.5, liq.y + 0.5, liq.w - 1, liq.h - 1);
+  ctx.beginPath();
+  ctx.moveTo(x0, top + 1);
+  for (let x = 0; x <= liq.w; x += 3) {
+    ctx.lineTo(x0 + x, top + Math.sin(x * 0.3 + t * 5 + liq.x) * 2.2);
+  }
+  ctx.stroke();
+
+  // 与下层砖的分界
+  ctx.strokeStyle = "rgba(26,26,26,0.4)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, bot - 0.5);
+  ctx.lineTo(x1, bot - 0.5);
+  ctx.stroke();
 }
 
 function drawGem(gem, t) {
@@ -1072,34 +1137,37 @@ function drawBox(box) {
 function drawPlayerSprite(p) {
   if (p.dead) return;
   const sheet = p.sheet;
+  if (!sheet?.sheetImg) return;
   if (p.invuln > 0 && Math.floor(p.invuln * 12) % 2 === 0) return;
 
   ctx.save();
   ctx.translate(p.x, p.y + p.h / 2);
-  if (p.anim !== "idle" && p.facing < 0) ctx.scale(-1, 1);
+  if (p.facing < 0) ctx.scale(-1, 1);
 
   const drawH = sheet.cellH * DRAW_SCALE;
   const drawW = sheet.cellW * DRAW_SCALE;
-
+  let row = sheet.runRow ?? 1;
+  let frames = sheet.runFrames || sheet.cols || 8;
   if (p.anim === "idle") {
-    const iw = sheet.idleW * DRAW_SCALE;
-    const ih = sheet.idleH * DRAW_SCALE;
-    ctx.drawImage(sheet.idleImg, -iw / 2, -ih, iw, ih);
-  } else {
-    const row = p.anim === "jump" ? sheet.jumpRow : sheet.runRow;
-    const col = p.frame % sheet.cols;
-    ctx.drawImage(
-      sheet.animImg,
-      col * sheet.cellW,
-      row * sheet.cellH,
-      sheet.cellW,
-      sheet.cellH,
-      -drawW / 2,
-      -drawH,
-      drawW,
-      drawH
-    );
+    row = sheet.idleRow ?? 0;
+    frames = sheet.idleFrames || frames;
+  } else if (p.anim === "jump") {
+    row = sheet.jumpRow ?? 2;
+    frames = sheet.jumpFrames || frames;
   }
+  const col = ((p.frame % frames) + frames) % frames;
+
+  ctx.drawImage(
+    sheet.sheetImg,
+    col * sheet.cellW,
+    row * sheet.cellH,
+    sheet.cellW,
+    sheet.cellH,
+    -drawW / 2,
+    -drawH,
+    drawW,
+    drawH
+  );
   ctx.restore();
 }
 

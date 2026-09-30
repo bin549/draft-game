@@ -1,24 +1,26 @@
 {
   "blue": {
-    "anim": "assets/player/icefire/blue_anim.png",
-    "idle": "assets/player/icefire/blue_idle.png",
-    "cellW": 196,
-    "cellH": 164,
-    "cols": 8,
-    "runRow": 0,
-    "jumpRow": 1,
-    "idleW": 89,
-    "idleH": 160
+    "sheet": "assets/player/icefire/blue_sheet.png",
+    "cellW": 168,
+    "cellH": 200,
+    "cols": 9,
+    "idleRow": 0,
+    "idleFrames": 9,
+    "runRow": 1,
+    "runFrames": 9,
+    "jumpRow": 2,
+    "jumpFrames": 8
   },
   "red": {
-    "anim": "assets/player/icefire/red_anim.png",
-    "idle": "assets/player/icefire/red_idle.png",
-    "cellW": 197,
-    "cellH": 164,
-    "cols": 8,
-    "runRow": 0,
-    "jumpRow": 1,
-    "idleW": 88,
-    "idleH": 160
+    "sheet": "assets/player/icefire/red_sheet.png",
+    "cellW": 168,
+    "cellH": 200,
+    "cols": 9,
+    "idleRow": 0,
+    "idleFrames": 9,
+    "runRow": 1,
+    "runFrames": 9,
+    "jumpRow": 2,
+    "jumpFrames": 8
   }
 }
