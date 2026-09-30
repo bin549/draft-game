@@ -174,6 +174,21 @@ async function ensureWeapons() {
   weaponSheet = punchBlack(img);
 }
 
+function downscaleSprite(img, maxSide = 256) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const scale = Math.min(1, maxSide / Math.max(iw, ih));
+  const w = Math.max(1, Math.round(iw * scale));
+  const h = Math.max(1, Math.round(ih * scale));
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d");
+  g.imageSmoothingEnabled = true;
+  g.drawImage(img, 0, 0, w, h);
+  return { canvas: c, w, h };
+}
+
 async function ensureFpsMonsters() {
   if (FPS_IDS.every((id) => fpsSprites[id])) return;
   await Promise.all(
@@ -181,11 +196,7 @@ async function ensureFpsMonsters() {
       if (fpsSprites[id]) return;
       const def = FPS_DEFS[id];
       const img = await loadImage(FPS_DIR + def.file);
-      fpsSprites[id] = {
-        canvas: img,
-        w: img.naturalWidth || img.width,
-        h: img.naturalHeight || img.height,
-      };
+      fpsSprites[id] = downscaleSprite(img);
     })
   );
 }
@@ -557,43 +568,54 @@ function drawBillboardColumns(opts) {
   const drawStartX = (spriteScreenX - spriteW / 2) | 0;
   const drawEndX = drawStartX + spriteW;
   const stripeStart = Math.max(0, drawStartX);
-  const stripeEnd = Math.min(viewW - 1, drawEndX);
+  const stripeEnd = Math.min(viewW, drawEndX);
+  if (stripeEnd <= stripeStart || spriteW < 1 || spriteH < 1) return { drawStartY };
 
-  for (let stripe = stripeStart; stripe < stripeEnd; stripe++) {
-    const col = (stripe / colW) | 0;
-    if (col < 0 || col >= cols) continue;
-    if (transformY >= zBuffer[col]) continue;
+  const dy0 = Math.max(0, drawStartY);
+  const dy1 = Math.min(viewH, drawEndY);
+  if (dy1 <= dy0) return { drawStartY };
 
-    const dy0 = Math.max(0, drawStartY);
-    const dy1 = Math.min(viewH, drawEndY);
-    if (dy1 <= dy0) continue;
+  const srcY0 = Math.max(0, (((dy0 - drawStartY) * sh) / spriteH) | 0);
+  const srcY1 = Math.min(sh, Math.ceil(((dy1 - drawStartY) * sh) / spriteH));
+  const srcH = Math.max(1, srcY1 - srcY0);
+  const destH = dy1 - dy0;
 
-    if (src) {
-      const texX = (((stripe - drawStartX) * sw) / spriteW) | 0;
-      const srcY0 = (((dy0 - drawStartY) * sh) / spriteH) | 0;
-      const srcY1 = Math.min(sh, Math.ceil(((dy1 - drawStartY) * sh) / spriteH));
-      if (srcY1 <= srcY0) continue;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.drawImage(
-        src,
-        texX,
-        srcY0,
-        1,
-        Math.max(1, srcY1 - srcY0),
-        stripe,
-        dy0,
-        1,
-        dy1 - dy0
-      );
-      ctx.restore();
-    } else {
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = "#A7E6C9";
-      ctx.fillRect(stripe, dy0, 1, dy1 - dy0);
-      ctx.globalAlpha = 1;
+  const prevAlpha = ctx.globalAlpha;
+  if (alpha !== 1) ctx.globalAlpha = alpha;
+  if (!src) ctx.fillStyle = "#A7E6C9";
+
+  const flush = (runStart, runEnd) => {
+    const dw = runEnd - runStart;
+    if (dw <= 0) return;
+    if (!src) {
+      ctx.fillRect(runStart, dy0, dw, destH);
+      return;
+    }
+    const texX0 = ((runStart - drawStartX) * sw) / spriteW;
+    const texX1 = ((runEnd - drawStartX) * sw) / spriteW;
+    const sx = Math.max(0, texX0 | 0);
+    const swSlice = Math.max(1, Math.min(sw - sx, Math.max(1, Math.ceil(texX1) - sx)));
+    ctx.drawImage(src, sx, srcY0, swSlice, srcH, runStart, dy0, dw, destH);
+  };
+
+  // 按墙柱分辨率测遮挡，连续可见段一次画出（靠近时避免每像素一次 drawImage）
+  let runStart = -1;
+  const col0 = Math.max(0, (stripeStart / colW) | 0);
+  const col1 = Math.min(cols - 1, ((stripeEnd - 1) / colW) | 0);
+  for (let col = col0; col <= col1; col++) {
+    const vis = transformY < zBuffer[col];
+    const x0 = Math.max(stripeStart, col * colW);
+    const x1 = Math.min(stripeEnd, (col + 1) * colW);
+    if (vis) {
+      if (runStart < 0) runStart = x0;
+    } else if (runStart >= 0) {
+      flush(runStart, x0);
+      runStart = -1;
     }
   }
+  if (runStart >= 0) flush(runStart, stripeEnd);
+
+  ctx.globalAlpha = prevAlpha;
   return { drawStartY };
 }
 

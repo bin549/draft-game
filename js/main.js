@@ -7,7 +7,7 @@ import { startIcefire, stopIcefire } from "./icefire.js?v=20260930autonext";
 import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260930a";
 import { startThief, stopThief } from "./thief.js?v=20260929h";
 import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
-import { startDoom, stopDoom } from "./doom.js?v=20260930h";
+import { startDoom, stopDoom } from "./doom.js?v=20260930spriteperf";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";

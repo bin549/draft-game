@@ -56,26 +56,19 @@ html.is-mobile #mobile-gate {
 #menu {
   z-index: 20;
   overflow: auto;
-}
-
-.menu-bg {
-  position: absolute;
-  inset: 0;
-  background:
+  /* 背景画在滚动容器上，内容超一屏时底部不会露出 body 深色 */
+  background-color: #d9d0c0;
+  background-image:
+    linear-gradient(rgba(26, 26, 26, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 26, 26, 0.04) 1px, transparent 1px),
     radial-gradient(ellipse 80% 60% at 20% 30%, rgba(196, 92, 38, 0.12), transparent 55%),
     radial-gradient(ellipse 70% 50% at 85% 70%, rgba(58, 143, 110, 0.1), transparent 50%),
     linear-gradient(165deg, #ebe4d6 0%, #d9d0c0 45%, #cfc4b0 100%);
+  background-size: 48px 48px, 48px 48px, auto, auto, auto;
 }
 
-.menu-bg::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(26, 26, 26, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(26, 26, 26, 0.04) 1px, transparent 1px);
-  background-size: 48px 48px;
-  pointer-events: none;
+.menu-bg {
+  display: none;
 }
 
 .menu-content {
