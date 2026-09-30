@@ -992,7 +992,7 @@ export function handleTowerfallBack() {
   return true;
 }
 
-export function startTowerfall({ canvas: c, els: e }) {
+export async function startTowerfall({ canvas: c, els: e }) {
   canvas = c;
   ctx = canvas.getContext("2d");
   els = e;
@@ -1015,7 +1015,8 @@ export function startTowerfall({ canvas: c, els: e }) {
   });
   on(els.btnRestart, "click", onRestart);
 
-  beginMode();
+  await beginMode();
+  if (!running) return;
   raf = requestAnimationFrame(tick);
 }
 

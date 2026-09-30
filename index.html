@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20260929w" />
+  <link rel="stylesheet" href="css/style.css?v=20260930doom" />
   <style>@keyframes loading-spin{to{transform:rotate(360deg)}}</style>
   <script>
     (function () {
@@ -145,6 +145,17 @@
             <p class="controls">鼠标点选分类与单品 · 自由搭配</p>
           </div>
         </button>
+        <button class="game-card" data-mode="doom" type="button">
+          <div class="card-preview" id="preview-doom">
+            <span class="preview-badge solo">单人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">10</span><span class="tag doom">深瞳</span></div>
+            <h2>深瞳模式</h2>
+            <p>伪 3D 迷宫 · 眼球潮涌 · 波次生存</p>
+            <p class="controls">WASD 移动 · 鼠标转向 · 左键/空格射击</p>
+          </div>
+        </button>
       </div>
     </div>
   </div>
@@ -282,6 +293,20 @@
       <div class="stat">
         <span class="label">换装模式</span>
         <span>点选分类与单品 · 装点仕女</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="hud-doom" class="hud hidden">
+      <div class="stat">
+        <span class="label">生命</span>
+        <div class="bar"><div id="doom-hp-fill"></div></div>
+        <span id="doom-hp-text">100</span>
+      </div>
+      <div class="stat time">
+        <span id="doom-wave-text">波次 1</span>
+        <span id="doom-kill-text">击杀 0</span>
+        <span id="doom-enemy-text">剩余 0</span>
       </div>
       <button type="button" class="btn-back" data-back>返回菜单</button>
     </div>
@@ -489,6 +514,26 @@
       </div>
     </div>
 
+    <div id="overlay-doom" class="overlay hidden">
+      <div class="panel">
+        <h2>深瞳模式</h2>
+        <p class="sub">伪 3D 迷宫 · 眼球潮涌 · 波次生存<br />WASD 移动 · 鼠标转向 · 左键/空格射击 · Esc 解锁鼠标</p>
+        <button id="btn-start-doom" type="button">进入深瞳</button>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-doom" class="overlay hidden">
+      <div class="panel">
+        <h2 id="doom-end-title">阵亡</h2>
+        <p id="doom-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-doom" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
@@ -538,6 +583,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260929bh"></script>
+  <script type="module" src="js/main.js?v=20260930doom"></script>
 </body>
 </html>

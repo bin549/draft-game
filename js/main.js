@@ -3,10 +3,11 @@ import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
 import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
-import { startIcefire, stopIcefire } from "./icefire.js?v=20260929n";
-import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260929i";
+import { startIcefire, stopIcefire } from "./icefire.js?v=20260930a";
+import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260930a";
 import { startThief, stopThief } from "./thief.js?v=20260929h";
 import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
+import { startDoom, stopDoom } from "./doom.js?v=20260930a";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
@@ -16,7 +17,7 @@ const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
 const loadingScreen = document.getElementById("loading-screen");
 
-const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup"];
+const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup", "doom"];
 
 let activeMode = null;
 
@@ -72,6 +73,7 @@ function stopActive() {
   if (activeMode === "towerfall") stopTowerfall();
   if (activeMode === "thief") stopThief();
   if (activeMode === "dressup") stopDressup();
+  if (activeMode === "doom") stopDoom();
   activeMode = null;
 }
 
@@ -80,17 +82,16 @@ async function enterMode(mode) {
   stopActive();
   hideAllModeUi();
 
-  const needsLoad = ["dressup", "thief", "icefire", "towerfall"].includes(mode);
-  // 先盖住菜单再拉资源，避免露出空白舞台
+  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom"].includes(mode);
+  // 先盖住菜单再拉资源；舞台等 start 完成后再露，避免空白渐变
   if (needsLoad) {
     showLoading("正在加载中…");
     await waitFrame();
   } else {
     hideLoading();
+    menu.classList.add("hidden");
+    stage.classList.remove("hidden");
   }
-
-  menu.classList.add("hidden");
-  stage.classList.remove("hidden");
   activeMode = mode;
 
   let loaded = false;
@@ -275,8 +276,30 @@ async function enterMode(mode) {
         gameover: document.getElementById("gameover-dressup"),
       },
     });
+  } else if (mode === "doom") {
+    await startDoom({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-doom"),
+        overlay: document.getElementById("overlay-doom"),
+        gameover: document.getElementById("gameover-doom"),
+        endTitle: document.getElementById("doom-end-title"),
+        resultText: document.getElementById("doom-result-text"),
+        hpFill: document.getElementById("doom-hp-fill"),
+        hpText: document.getElementById("doom-hp-text"),
+        waveText: document.getElementById("doom-wave-text"),
+        killText: document.getElementById("doom-kill-text"),
+        enemyText: document.getElementById("doom-enemy-text"),
+        btnStart: document.getElementById("btn-start-doom"),
+        btnRestart: document.getElementById("btn-restart-doom"),
+      },
+    });
   }
-  if (needsLoad) await waitFrame();
+  if (needsLoad) {
+    menu.classList.add("hidden");
+    stage.classList.remove("hidden");
+    await waitFrame();
+  }
   loaded = true;
   } catch (err) {
     console.error(err);
@@ -855,6 +878,63 @@ function drawMenuPreviews() {
     ctx.font = "bold 12px Songti SC, serif";
     ctx.textAlign = "center";
     ctx.fillText("换装", w * 0.5, h * 0.92);
+  });
+
+  setupPreviewCanvas("preview-doom", (ctx, w, h) => {
+    // 伪 3D 走廊剪影
+    const ceil = ctx.createLinearGradient(0, 0, 0, h * 0.5);
+    ceil.addColorStop(0, "#c8d6e0");
+    ceil.addColorStop(1, "#d8e4ec");
+    ctx.fillStyle = ceil;
+    ctx.fillRect(0, 0, w, h * 0.5);
+    const floor = ctx.createLinearGradient(0, h * 0.5, 0, h);
+    floor.addColorStop(0, "#ddd4c4");
+    floor.addColorStop(1, "#cfc4b0");
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, h * 0.5, w, h * 0.5);
+
+    // 透视墙
+    ctx.fillStyle = "#d8cfc0";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(w * 0.32, h * 0.28);
+    ctx.lineTo(w * 0.32, h * 0.72);
+    ctx.lineTo(0, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#cfc4b0";
+    ctx.beginPath();
+    ctx.moveTo(w, 0);
+    ctx.lineTo(w * 0.68, h * 0.28);
+    ctx.lineTo(w * 0.68, h * 0.72);
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // 远墙
+    ctx.fillStyle = "#e4ddd0";
+    ctx.fillRect(w * 0.32, h * 0.28, w * 0.36, h * 0.44);
+    ctx.strokeRect(w * 0.32 + 0.5, h * 0.28 + 0.5, w * 0.36 - 1, h * 0.44 - 1);
+
+    drawEyeball(ctx, w * 0.5, h * 0.58, 0.95, 1.2, 0);
+
+    // 准星
+    ctx.strokeStyle = "rgba(26,26,26,0.55)";
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5 - 8, h * 0.48);
+    ctx.lineTo(w * 0.5 + 8, h * 0.48);
+    ctx.moveTo(w * 0.5, h * 0.48 - 8);
+    ctx.lineTo(w * 0.5, h * 0.48 + 8);
+    ctx.stroke();
+
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("DOOM?", w * 0.5, h * 0.14);
   });
 }
 

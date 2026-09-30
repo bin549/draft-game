@@ -1305,7 +1305,7 @@ function onRestart() {
   else beginGame(state.won ? 1 : state.stage);
 }
 
-export function startIcefire({ canvas: c, els: e }) {
+export async function startIcefire({ canvas: c, els: e }) {
   canvas = c;
   ctx = canvas.getContext("2d");
   els = e;
@@ -1328,10 +1328,11 @@ export function startIcefire({ canvas: c, els: e }) {
   on(els.btnStart, "click", () => beginGame(1));
   on(els.btnRestart, "click", onRestart);
 
-  // 选中模式后直接开局，跳过说明页
+  // 选中模式后直接开局，跳过说明页；等资源就绪再开跑，避免空白渐变
   els.overlay?.classList.add("hidden");
   els.gameover?.classList.add("hidden");
-  beginGame(1);
+  await beginGame(1);
+  if (!running) return;
   raf = requestAnimationFrame(tick);
 }
 

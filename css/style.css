@@ -313,6 +313,12 @@ html.is-mobile #mobile-gate {
   background: rgba(29, 42, 58, 0.18);
 }
 
+.tag.doom {
+  background: rgba(60, 90, 70, 0.22);
+}
+
+#doom-hp-fill { background: var(--hp); }
+
 #hud-towerfall .label.p1 { color: #c45c26; }
 #hud-towerfall .label.p2 { color: #3a8f6e; }
 #hud-towerfall .stat {

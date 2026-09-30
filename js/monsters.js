@@ -309,6 +309,12 @@ export function getMonsterDef(type) {
   return MONSTER_DEFS[id] || MONSTER_DEFS["nine-tail-fox-1"];
 }
 
+/** 已加载的怪物位图包（canvas + silhouette），供伪 3D 等模式复用 */
+export function getMonsterSprite(type) {
+  const id = normalizeMonsterType(type);
+  return images[id] || null;
+}
+
 /** 当前关卡已解锁的怪物（每种编号独立） */
 export function unlockedMonsters(stage) {
   const s = Math.max(1, stage | 0);
