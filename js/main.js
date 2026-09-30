@@ -3,7 +3,7 @@ import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
 import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
-import { startIcefire, stopIcefire } from "./icefire.js?v=20260930liqjump";
+import { startIcefire, stopIcefire } from "./icefire.js?v=20260930descend";
 import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260930a";
 import { startThief, stopThief } from "./thief.js?v=20260929h";
 import { startDressup, stopDressup } from "./dressup.js?v=20260929j";

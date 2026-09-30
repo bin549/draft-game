@@ -19,8 +19,10 @@ const BODY_W = 26;
 const BODY_H = 48;
 const BOX_SIZE = 40;
 const WALL = 36;
-/** 陷阱液面高度（底下仍是地面砖） */
-const LIQ_DEPTH = 16;
+/** 陷阱液面高度（池深，角色会落到池底） */
+const LIQ_DEPTH = 22;
+/** 层距：要大于 BODY_H+WALL+跳跃余量，否则一跳就顶到上层 */
+const ROW_GAP = 178;
 
 const CTRL = {
   ice: {
@@ -159,19 +161,39 @@ function gate(id, x, platY, h = 72, fromButton = null) {
   };
 }
 
-/** 陷阱底下保留/补齐地面，不再整块挖空 */
-function ensureGroundUnderLiquids(solids, liquids) {
-  const out = solids.map((s) => ({ ...s }));
+/** 把陷阱挖成水池：只在挖到地面时加池底；缺口里可不封，方便下落 */
+function buildLiquidPools(solids, liquids) {
+  let out = solids.map((s) => ({ ...s }));
   for (const liq of liquids) {
-    const covered = out.some(
-      (s) =>
-        s.y <= liq.y + 2 &&
-        s.y + s.h >= liq.y + liq.h - 2 &&
-        s.x <= liq.x + 2 &&
-        s.x + s.w >= liq.x + liq.w - 2
-    );
-    if (!covered) {
-      out.push({ x: liq.x, y: liq.y, w: liq.w, h: liq.h });
+    const depth = Math.min(LIQ_DEPTH, liq.h);
+    const lx0 = liq.x;
+    const lx1 = liq.x + liq.w;
+    const ly0 = liq.y - 1;
+    const ly1 = liq.y + depth + 1;
+    let carved = false;
+    const next = [];
+    for (const s of out) {
+      const overlaps =
+        s.x < lx1 && s.x + s.w > lx0 && s.y < ly1 && s.y + s.h > ly0;
+      if (!overlaps) {
+        next.push(s);
+        continue;
+      }
+      carved = true;
+      const leftW = lx0 - s.x;
+      if (leftW > 4) next.push({ x: s.x, y: s.y, w: leftW, h: s.h });
+      const rightW = s.x + s.w - lx1;
+      if (rightW > 4) next.push({ x: lx1, y: s.y, w: rightW, h: s.h });
+    }
+    out = next;
+    // 缺口里的液体默认不铺池底（可下落）；底层水池设 floor:true
+    if (carved || liq.floor) {
+      out.push({
+        x: liq.x,
+        y: liq.y + depth,
+        w: liq.w,
+        h: Math.max(10, liq.h - depth),
+      });
     }
   }
   return out;
@@ -182,85 +204,80 @@ function liquidSurface(liq) {
   return { x: liq.x, y: liq.y, w: liq.w, h };
 }
 
-/** 伤害判定：贴着液面才算踩中；腾空越过液面以上不受伤 */
+/** 伤害判定：脚落入池内才算；比视觉略窄 */
 function liquidHitbox(liq) {
-  const h = Math.min(LIQ_DEPTH, liq.h) + 6;
-  return { x: liq.x, y: liq.y - 2, w: liq.w, h };
+  const inset = Math.min(12, Math.floor(liq.w * 0.22));
+  const w = Math.max(16, liq.w - inset * 2);
+  const depth = Math.min(LIQ_DEPTH, liq.h);
+  return { x: liq.x + inset, y: liq.y, w, h: depth + 6 };
 }
 
 function buildLevel(stage) {
   const W = 1100;
-  const H = 720;
   const T = WALL;
+  // 4 层，层距加大，头顶有足够空间跳过陷阱
+  const rows = [200, 200 + ROW_GAP, 200 + ROW_GAP * 2, 200 + ROW_GAP * 3];
+  const H = rows[rows.length - 1] + T + 48;
   const cy = (platY) => platY - BODY_H / 2;
-  // 闸门只填平台缝，高度略小于层距，避免穿进上层
-  // （gate 已提取到外层）
+  const [r0, r1, r2, r3] = rows;
 
   let level;
   if (stage === 1) {
-    // 教学关：左右竖井下落 · 陷阱仅液面，底下仍是地面
     level = {
       width: W,
       height: H,
       title: "逃亡 · 入门",
-      hint: "内侧缺口下落 · 齐进双门即可通关",
-      spawn: { ice: [120, cy(140)], fire: [980, cy(140)] },
+      hint: "内侧缺口下落 · 跳过窄陷阱 · 齐进双门即可通关",
+      spawn: { ice: [120, cy(r0)], fire: [980, cy(r0)] },
       solids: [
         { x: 0, y: 0, w: W, h: T },
         { x: 0, y: H - T, w: W, h: T },
         { x: 0, y: 0, w: T, h: H },
         { x: W - T, y: 0, w: T, h: H },
-        { x: T, y: 140, w: 170, h: T },
-        { x: 300, y: 140, w: 500, h: T },
-        { x: 900, y: 140, w: W - T - 900, h: T },
-        { x: T, y: 270, w: 264, h: T },
-        { x: 380, y: 270, w: 340, h: T },
-        { x: 820, y: 270, w: W - T - 820, h: T },
-        { x: T, y: 400, w: 284, h: T },
-        { x: 400, y: 400, w: 300, h: T },
-        { x: 800, y: 400, w: W - T - 800, h: T },
-        { x: T, y: 530, w: 264, h: T },
-        { x: 380, y: 530, w: 340, h: T },
-        { x: 820, y: 530, w: W - T - 820, h: T },
-        { x: T, y: 660, w: 220, h: T },
-        { x: 420, y: 660, w: 260, h: T },
-        { x: 860, y: 660, w: W - T - 860, h: T },
+        { x: T, y: r0, w: 170, h: T },
+        { x: 300, y: r0, w: 500, h: T },
+        { x: 900, y: r0, w: W - T - 900, h: T },
+        { x: T, y: r1, w: 264, h: T },
+        { x: 380, y: r1, w: 340, h: T },
+        { x: 820, y: r1, w: W - T - 820, h: T },
+        { x: T, y: r2, w: 284, h: T },
+        { x: 400, y: r2, w: 300, h: T },
+        { x: 800, y: r2, w: W - T - 800, h: T },
+        { x: T, y: r3, w: 220, h: T },
+        { x: 420, y: r3, w: 260, h: T },
+        { x: 860, y: r3, w: W - T - 860, h: T },
       ],
       liquids: [
-        { type: "water", x: 340, y: 140, w: 70, h: T },
-        { type: "goo", x: 520, y: 140, w: 70, h: T },
-        { type: "lava", x: 690, y: 140, w: 70, h: T },
-        { type: "goo", x: 500, y: 270, w: 60, h: T },
-        { type: "water", x: 440, y: 400, w: 70, h: T },
-        { type: "lava", x: 580, y: 400, w: 70, h: T },
-        { type: "goo", x: 500, y: 530, w: 60, h: T },
-        { type: "lava", x: 256, y: 660, w: 164, h: T },
-        { type: "water", x: 680, y: 660, w: 180, h: T },
+        { type: "water", x: 350, y: r0, w: 56, h: T },
+        { type: "goo", x: 520, y: r0, w: 56, h: T },
+        { type: "lava", x: 690, y: r0, w: 56, h: T },
+        { type: "goo", x: 500, y: r1, w: 52, h: T },
+        { type: "water", x: 450, y: r2, w: 56, h: T },
+        { type: "lava", x: 580, y: r2, w: 56, h: T },
+        { type: "lava", x: 256, y: r3, w: 150, h: T, floor: true },
+        { type: "water", x: 690, y: r3, w: 160, h: T, floor: true },
       ],
       gems: [
-        // 全部放在侧道可触达处
-        { type: "ice", x: 120, y: 100, got: false },
-        { type: "fire", x: 970, y: 100, got: false },
-        { type: "ice", x: 150, y: 230, got: false },
-        { type: "fire", x: 960, y: 230, got: false },
-        { type: "ice", x: 160, y: 360, got: false },
-        { type: "fire", x: 940, y: 360, got: false },
-        { type: "ice", x: 150, y: 490, got: false },
-        { type: "fire", x: 960, y: 490, got: false },
-        { type: "ice", x: 140, y: 620, got: false },
-        { type: "fire", x: 950, y: 620, got: false },
+        { type: "ice", x: 120, y: r0 - 40, got: false },
+        { type: "fire", x: 970, y: r0 - 40, got: false },
+        { type: "ice", x: 150, y: r1 - 40, got: false },
+        { type: "fire", x: 960, y: r1 - 40, got: false },
+        { type: "ice", x: 160, y: r2 - 40, got: false },
+        { type: "fire", x: 940, y: r2 - 40, got: false },
+        { type: "ice", x: 140, y: r3 - 40, got: false },
+        { type: "fire", x: 950, y: r3 - 40, got: false },
       ],
       doors: [
-        { type: "fire", x: 70, y: 660, w: 64, h: 78 },
-        { type: "ice", x: 950, y: 660, w: 64, h: 78 },
+        { type: "fire", x: 70, y: r3, w: 64, h: 78 },
+        { type: "ice", x: 950, y: r3, w: 64, h: 78 },
       ],
       levers: [],
       gates: [],
       buttons: [],
       boxes: [],
       vines: [
-        [80, 140], [500, 140], [940, 140], [150, 270], [900, 270],
-        [180, 400], [500, 530], [120, 660], [950, 660],
+        [80, r0], [500, r0], [940, r0], [150, r1], [900, r1],
+        [180, r2], [120, r3], [950, r3],
       ],
     };
   } else if (stage === 2) {
@@ -269,65 +286,60 @@ function buildLevel(stage) {
       height: H,
       title: "逃亡 · 机关",
       hint: "内侧缺口下落 · 拉杆开闸 · 齐进双门即可通关",
-      spawn: { ice: [120, cy(140)], fire: [980, cy(140)] },
+      spawn: { ice: [120, cy(r0)], fire: [980, cy(r0)] },
       solids: [
         { x: 0, y: 0, w: W, h: T },
         { x: 0, y: H - T, w: W, h: T },
         { x: 0, y: 0, w: T, h: H },
         { x: W - T, y: 0, w: T, h: H },
-        { x: T, y: 140, w: 170, h: T },
-        { x: 300, y: 140, w: 500, h: T },
-        { x: 900, y: 140, w: W - T - 900, h: T },
-        { x: T, y: 270, w: 264, h: T },
-        { x: 380, y: 270, w: 340, h: T },
-        { x: 820, y: 270, w: W - T - 820, h: T },
-        { x: T, y: 400, w: 360, h: T },
-        { x: 500, y: 400, w: 240, h: T },
-        { x: 840, y: 400, w: W - T - 840, h: T },
-        { x: T, y: 530, w: 300, h: T },
-        { x: 420, y: 530, w: 280, h: T },
-        { x: 800, y: 530, w: W - T - 800, h: T },
-        { x: T, y: 660, w: 220, h: T },
-        { x: 420, y: 660, w: 260, h: T },
-        { x: 860, y: 660, w: W - T - 860, h: T },
+        { x: T, y: r0, w: 170, h: T },
+        { x: 300, y: r0, w: 500, h: T },
+        { x: 900, y: r0, w: W - T - 900, h: T },
+        { x: T, y: r1, w: 264, h: T },
+        { x: 380, y: r1, w: 340, h: T },
+        { x: 820, y: r1, w: W - T - 820, h: T },
+        { x: T, y: r2, w: 360, h: T },
+        { x: 500, y: r2, w: 240, h: T },
+        { x: 840, y: r2, w: W - T - 840, h: T },
+        { x: T, y: r3, w: 220, h: T },
+        { x: 420, y: r3, w: 260, h: T },
+        { x: 860, y: r3, w: W - T - 860, h: T },
       ],
       liquids: [
-        { type: "goo", x: 520, y: 140, w: 70, h: T },
-        { type: "lava", x: 360, y: 530, w: 60, h: T },
-        { type: "water", x: 700, y: 530, w: 100, h: T },
-        { type: "lava", x: 256, y: 660, w: 164, h: T },
-        { type: "water", x: 680, y: 660, w: 180, h: T },
+        { type: "goo", x: 520, y: r0, w: 56, h: T },
+        { type: "lava", x: 380, y: r2, w: 56, h: T },
+        { type: "water", x: 700, y: r2, w: 80, h: T },
+        { type: "lava", x: 256, y: r3, w: 150, h: T, floor: true },
+        { type: "water", x: 690, y: r3, w: 160, h: T, floor: true },
       ],
       gems: [
-        { type: "ice", x: 120, y: 100, got: false },
-        { type: "fire", x: 970, y: 100, got: false },
-        { type: "ice", x: 150, y: 230, got: false },
-        { type: "fire", x: 960, y: 230, got: false },
-        { type: "ice", x: 180, y: 360, got: false },
-        { type: "fire", x: 920, y: 360, got: false },
-        { type: "ice", x: 160, y: 490, got: false },
-        { type: "fire", x: 940, y: 490, got: false },
-        { type: "ice", x: 140, y: 620, got: false },
-        { type: "fire", x: 950, y: 620, got: false },
+        { type: "ice", x: 120, y: r0 - 40, got: false },
+        { type: "fire", x: 970, y: r0 - 40, got: false },
+        { type: "ice", x: 150, y: r1 - 40, got: false },
+        { type: "fire", x: 960, y: r1 - 40, got: false },
+        { type: "ice", x: 180, y: r2 - 40, got: false },
+        { type: "fire", x: 920, y: r2 - 40, got: false },
+        { type: "ice", x: 140, y: r3 - 40, got: false },
+        { type: "fire", x: 950, y: r3 - 40, got: false },
       ],
       doors: [
-        { type: "fire", x: 70, y: 660, w: 64, h: 78 },
-        { type: "ice", x: 950, y: 660, w: 64, h: 78 },
+        { type: "fire", x: 70, y: r3, w: 64, h: 78 },
+        { type: "ice", x: 950, y: r3, w: 64, h: 78 },
       ],
       levers: [
-        { id: "L1", x: 160, y: 400, on: false, gate: "G1", color: "#5a9a4a" },
+        { id: "L1", x: 160, y: r2, on: false, gate: "G1", color: "#5a9a4a" },
       ],
       gates: [
-        gate("G1", 458, 400, 70),
-        gate("G2", 740, 530, 70, "B1"),
+        gate("G1", 458, r2, 70),
+        gate("G2", 740, r2, 70, "B1"),
       ],
       buttons: [
-        { id: "B1", x: 880, y: 530 - 10, w: 48, h: 10, pressed: false, gate: "G2" },
+        { id: "B1", x: 880, y: r2 - 3, w: 56, h: 3, pressed: false, gate: "G2" },
       ],
-      boxes: [{ x: 940, y: 530 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
+      boxes: [{ x: 940, y: r2 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
       vines: [
-        [90, 140], [500, 140], [940, 140], [150, 270], [900, 270],
-        [200, 400], [500, 530], [120, 660], [950, 660],
+        [90, r0], [500, r0], [940, r0], [150, r1], [900, r1],
+        [200, r2], [120, r3], [950, r3],
       ],
     };
   } else {
@@ -336,75 +348,70 @@ function buildLevel(stage) {
       height: H,
       title: "逃亡 · 试炼",
       hint: "内侧缺口下落 · 双拉杆 + 推箱 · 齐进双门即可通关",
-      spawn: { ice: [120, cy(140)], fire: [980, cy(140)] },
+      spawn: { ice: [120, cy(r0)], fire: [980, cy(r0)] },
       solids: [
         { x: 0, y: 0, w: W, h: T },
         { x: 0, y: H - T, w: W, h: T },
         { x: 0, y: 0, w: T, h: H },
         { x: W - T, y: 0, w: T, h: H },
-        { x: T, y: 140, w: 170, h: T },
-        { x: 300, y: 140, w: 500, h: T },
-        { x: 900, y: 140, w: W - T - 900, h: T },
-        { x: T, y: 270, w: 264, h: T },
-        { x: 380, y: 270, w: 340, h: T },
-        { x: 820, y: 270, w: W - T - 820, h: T },
-        { x: T, y: 400, w: 300, h: T },
-        { x: 420, y: 400, w: 260, h: T },
-        { x: 800, y: 400, w: W - T - 800, h: T },
-        { x: T, y: 530, w: 300, h: T },
-        { x: 420, y: 530, w: 280, h: T },
-        { x: 800, y: 530, w: W - T - 800, h: T },
-        { x: T, y: 660, w: 220, h: T },
-        { x: 420, y: 660, w: 260, h: T },
-        { x: 860, y: 660, w: W - T - 860, h: T },
+        { x: T, y: r0, w: 170, h: T },
+        { x: 300, y: r0, w: 500, h: T },
+        { x: 900, y: r0, w: W - T - 900, h: T },
+        { x: T, y: r1, w: 264, h: T },
+        { x: 380, y: r1, w: 340, h: T },
+        { x: 820, y: r1, w: W - T - 820, h: T },
+        { x: T, y: r2, w: 300, h: T },
+        { x: 420, y: r2, w: 260, h: T },
+        { x: 800, y: r2, w: W - T - 800, h: T },
+        { x: T, y: r3, w: 220, h: T },
+        { x: 420, y: r3, w: 260, h: T },
+        { x: 860, y: r3, w: W - T - 860, h: T },
       ],
       liquids: [
-        { type: "goo", x: 520, y: 140, w: 70, h: T },
-        { type: "water", x: 336, y: 400, w: 84, h: T },
-        { type: "lava", x: 680, y: 400, w: 120, h: T },
-        { type: "goo", x: 500, y: 400, w: 60, h: T },
-        { type: "lava", x: 320, y: 530, w: 100, h: T },
-        { type: "water", x: 700, y: 530, w: 100, h: T },
-        { type: "lava", x: 256, y: 660, w: 164, h: T },
-        { type: "water", x: 680, y: 660, w: 180, h: T },
+        { type: "goo", x: 520, y: r0, w: 56, h: T },
+        // 陷阱放在平台上，左右缺口留给下落
+        { type: "water", x: 460, y: r2, w: 56, h: T },
+        { type: "goo", x: 540, y: r2, w: 48, h: T },
+        { type: "lava", x: 600, y: r2, w: 56, h: T },
+        { type: "lava", x: 256, y: r3, w: 150, h: T, floor: true },
+        { type: "water", x: 690, y: r3, w: 160, h: T, floor: true },
       ],
       gems: [
-        { type: "ice", x: 120, y: 100, got: false },
-        { type: "fire", x: 970, y: 100, got: false },
-        { type: "ice", x: 150, y: 230, got: false },
-        { type: "fire", x: 960, y: 230, got: false },
-        { type: "ice", x: 180, y: 360, got: false },
-        { type: "fire", x: 920, y: 360, got: false },
-        { type: "ice", x: 160, y: 490, got: false },
-        { type: "fire", x: 940, y: 490, got: false },
-        { type: "ice", x: 140, y: 620, got: false },
-        { type: "fire", x: 950, y: 620, got: false },
+        { type: "ice", x: 120, y: r0 - 40, got: false },
+        { type: "fire", x: 970, y: r0 - 40, got: false },
+        { type: "ice", x: 150, y: r1 - 40, got: false },
+        { type: "fire", x: 960, y: r1 - 40, got: false },
+        { type: "ice", x: 180, y: r2 - 40, got: false },
+        { type: "fire", x: 920, y: r2 - 40, got: false },
+        { type: "ice", x: 140, y: r3 - 40, got: false },
+        { type: "fire", x: 950, y: r3 - 40, got: false },
       ],
       doors: [
-        { type: "fire", x: 70, y: 660, w: 64, h: 78 },
-        { type: "ice", x: 950, y: 660, w: 64, h: 78 },
+        { type: "fire", x: 70, y: r3, w: 64, h: 78 },
+        { type: "ice", x: 950, y: r3, w: 64, h: 78 },
       ],
       levers: [
-        { id: "L1", x: 160, y: 400, on: false, gate: "G1", color: "#5a9a4a" },
-        { id: "L2", x: 920, y: 400, on: false, gate: "G2", color: "#a45a9a" },
+        { id: "L1", x: 160, y: r2, on: false, gate: "G1", color: "#5a9a4a" },
+        { id: "L2", x: 920, y: r2, on: false, gate: "G2", color: "#a45a9a" },
       ],
       gates: [
-        gate("G1", 380, 270, 70),
-        gate("G2", 740, 400, 70),
-        gate("G3", 740, 530, 70, "B1"),
+        // 闸门挡横向通道，不封死下落缺口
+        gate("G1", 500, r1, 70),
+        gate("G2", 560, r2, 70),
+        gate("G3", 500, r3, 70, "B1"),
       ],
       buttons: [
-        { id: "B1", x: 880, y: 530 - 10, w: 48, h: 10, pressed: false, gate: "G3" },
+        { id: "B1", x: 880, y: r3 - 3, w: 56, h: 3, pressed: false, gate: "G3" },
       ],
-      boxes: [{ x: 940, y: 530 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
+      boxes: [{ x: 940, y: r3 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
       vines: [
-        [80, 140], [500, 140], [940, 140], [150, 270], [900, 270],
-        [200, 400], [500, 530], [120, 660], [950, 660],
+        [80, r0], [500, r0], [940, r0], [150, r1], [900, r1],
+        [200, r2], [120, r3], [950, r3],
       ],
     };
   }
 
-  level.solids = ensureGroundUnderLiquids(level.solids, level.liquids);
+  level.solids = buildLiquidPools(level.solids, level.liquids);
   return level;
 }
 
@@ -662,14 +669,14 @@ function updateLeversAndGates(dt) {
     }
   }
 
-  // 按钮：角色或箱子压住 → 开对应闸门
+  // 按钮：角色或箱子压住 → 开对应闸门（贴地薄片，不挡箱子）
   for (const b of level.buttons) {
     b.pressed = false;
     for (const p of state.players) {
       if (p.dead) continue;
       const feetX = p.x - p.w / 2;
-      const feetY = p.y + p.h / 2 - 6;
-      if (rectOverlap(feetX, feetY, p.w, 10, b.x - 4, b.y - 8, b.w + 8, b.h + 14)) {
+      const feetY = p.y + p.h / 2 - 4;
+      if (rectOverlap(feetX, feetY, p.w, 8, b.x - 6, b.y - 6, b.w + 12, b.h + 16)) {
         b.pressed = true;
         break;
       }
@@ -679,13 +686,13 @@ function updateLeversAndGates(dt) {
         if (
           rectOverlap(
             box.x,
-            box.y + box.h - 10,
+            box.y + box.h - 8,
             box.w,
-            14,
-            b.x - 4,
+            16,
+            b.x - 8,
             b.y - 8,
-            b.w + 8,
-            b.h + 14
+            b.w + 16,
+            b.h + 20
           )
         ) {
           b.pressed = true;
@@ -722,13 +729,18 @@ function updatePlayer(dt, p) {
   p.vx = move * (p.pushing ? PUSH_SPEED : MOVE_SPEED);
   if (move !== 0) p.facing = move;
 
-  if (keyDown(c.jump) && p.onGround) {
+  if (p.onGround) p.coyote = 0.14;
+  else p.coyote = Math.max(0, (p.coyote || 0) - dt);
+
+  // 土狼时间：贴陷阱边短暂离地仍可起跳
+  if (keyDown(c.jump) && !p._jumpHeld && (p.onGround || p.coyote > 0)) {
     p.vy = JUMP_V;
     p.onGround = false;
+    p.coyote = 0;
     p._jumpHeld = true;
   }
   if (p._jumpHeld && !keyDown(c.jump)) {
-    if (p.vy < -160) p.vy = -160;
+    if (p.vy < -200) p.vy = -200;
     p._jumpHeld = false;
   }
 
@@ -740,10 +752,10 @@ function updatePlayer(dt, p) {
 
   for (const liq of state.level.liquids) {
     const feet = p.y + p.h / 2;
-    // 脚已明显高于液面 = 跳过去，不判伤
-    if (feet < liq.y - 8) continue;
+    // 脚还在液面之上 = 跳过去
+    if (feet < liq.y + 2) continue;
     const hit = liquidHitbox(liq);
-    if (!rectOverlap(left, feet - 6, p.w, 10, hit.x, hit.y, hit.w, hit.h)) continue;
+    if (!rectOverlap(left, feet - 10, p.w, 14, hit.x, hit.y, hit.w, hit.h)) continue;
     const safe =
       (liq.type === "water" && p.kind === "ice") ||
       (liq.type === "lava" && p.kind === "fire");
@@ -919,27 +931,28 @@ function drawLiquid(liq, t) {
   const x1 = liq.x + liq.w;
   const top = liq.y;
   const bot = liq.y + depth;
+  const waveY = (x) => top + 3 + Math.abs(Math.sin(x * 0.3 + t * 5 + liq.x)) * 2.2;
 
-  // 不透明嵌进砖面：盖住顶边黑线，看起来是挖在地面里而非叠在上面
-  ctx.fillStyle = c.b;
-  ctx.fillRect(x0, top - 1.5, liq.w, depth + 1.5);
-
+  // 池洞背景已由挖空的砖面露出，这里不再整块重绘（避免盖住人物）
+  // 半透明水面盖在角色腿上
   const g = ctx.createLinearGradient(0, top, 0, bot);
   g.addColorStop(0, c.a);
-  g.addColorStop(0.65, c.b);
+  g.addColorStop(0.7, c.b);
   g.addColorStop(1, c.b);
+  ctx.globalAlpha = 0.88;
   ctx.fillStyle = g;
   ctx.beginPath();
   ctx.moveTo(x0, bot);
-  ctx.lineTo(x0, top + 1);
-  for (let x = 0; x <= liq.w; x += 3) {
-    ctx.lineTo(x0 + x, top + Math.sin(x * 0.3 + t * 5 + liq.x) * 2.2);
+  ctx.lineTo(x0, waveY(0));
+  for (let x = 3; x <= liq.w; x += 3) {
+    ctx.lineTo(x0 + x, waveY(x));
   }
   ctx.lineTo(x1, bot);
   ctx.closePath();
   ctx.fill();
+  ctx.globalAlpha = 1;
 
-  // 坑壁：左右竖边接到砖里
+  // 坑壁
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -949,19 +962,18 @@ function drawLiquid(liq, t) {
   ctx.lineTo(x1 - 0.5, bot);
   ctx.stroke();
 
-  // 液面描边（取代该段平台顶边）
+  // 液面波纹线
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(x0, top + 1);
-  for (let x = 0; x <= liq.w; x += 3) {
-    ctx.lineTo(x0 + x, top + Math.sin(x * 0.3 + t * 5 + liq.x) * 2.2);
+  ctx.moveTo(x0, waveY(0));
+  for (let x = 3; x <= liq.w; x += 3) {
+    ctx.lineTo(x0 + x, waveY(x));
   }
   ctx.stroke();
 
-  // 与下层砖的分界
-  ctx.strokeStyle = "rgba(26,26,26,0.4)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "#1a1a1a";
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(x0, bot - 0.5);
   ctx.lineTo(x1, bot - 0.5);
@@ -1084,16 +1096,17 @@ function drawLever(lev) {
 }
 
 function drawButton(b) {
-  const h = b.pressed ? 5 : 10;
-  const y = b.y + (10 - h);
+  // 贴地薄片，不形成挡箱子的台阶
+  const h = b.pressed ? 2 : Math.max(3, b.h);
+  const y = b.y;
   ctx.fillStyle = b.pressed ? "#3a8f6e" : "#e8e0d2";
   ctx.strokeStyle = "#1a1a1a";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.fillRect(b.x, y, b.w, h);
   ctx.strokeRect(b.x, y, b.w, h);
   if (!b.pressed) {
     ctx.fillStyle = "#3a8f6e";
-    ctx.fillRect(b.x + b.w / 2 - 4, y + 2, 8, 4);
+    ctx.fillRect(b.x + b.w / 2 - 6, y + 0.5, 12, Math.max(1, h - 1));
   }
 }
 
@@ -1232,7 +1245,6 @@ function render() {
 
   for (const s of state.level.solids) drawSolid(s);
   for (const [vx, vy] of state.level.vines || []) drawVine(vx, vy);
-  for (const liq of state.level.liquids) drawLiquid(liq, state.time);
   for (const g of state.level.gates) drawGate(g);
   for (const b of state.level.buttons) drawButton(b);
   for (const lev of state.level.levers) drawLever(lev);
@@ -1240,6 +1252,8 @@ function render() {
   for (const gem of state.level.gems) drawGem(gem, state.time);
   for (const box of state.level.boxes) drawBox(box);
   for (const p of state.players) drawPlayerSprite(p);
+  // 水面盖在人物之上，腿部才像浸在水里
+  for (const liq of state.level.liquids) drawLiquid(liq, state.time);
 
   // 关卡外框描边
   ctx.strokeStyle = "#1a1a1a";
