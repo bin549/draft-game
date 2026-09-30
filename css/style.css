@@ -318,6 +318,13 @@ html.is-mobile #mobile-gate {
 }
 
 #doom-hp-fill { background: var(--hp); }
+#doom-hp2-fill { background: #3a6ea5; }
+
+#hud-doom .btn-ghost.active,
+#btn-join-doom.active {
+  background: var(--ink);
+  color: #fff;
+}
 
 #hud-towerfall .label.p1 { color: #c45c26; }
 #hud-towerfall .label.p2 { color: #3a8f6e; }

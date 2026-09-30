@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20260930doom" />
+  <link rel="stylesheet" href="css/style.css?v=20260930doom2p" />
   <style>@keyframes loading-spin{to{transform:rotate(360deg)}}</style>
   <script>
     (function () {
@@ -147,13 +147,13 @@
         </button>
         <button class="game-card" data-mode="doom" type="button">
           <div class="card-preview" id="preview-doom">
-            <span class="preview-badge solo">单人</span>
+            <span class="preview-badge coop">可双人</span>
           </div>
           <div class="card-body">
-            <div class="card-meta"><span class="mode-num">10</span><span class="tag doom">深瞳</span></div>
-            <h2>深瞳模式</h2>
-            <p>伪 3D 迷宫 · 眼球潮涌 · 波次生存</p>
-            <p class="controls">WASD 移动 · 鼠标转向 · 左键/空格射击</p>
+            <div class="card-meta"><span class="mode-num">10</span><span class="tag doom">射击</span></div>
+            <h2>射击模式</h2>
+            <p>伪 3D 迷宫 · 怪潮波次 · 可分屏双人</p>
+            <p class="controls">P1：WASD · A/D转身 · J射击 · P2：←→转身 · Shift射击</p>
           </div>
         </button>
       </div>
@@ -299,9 +299,14 @@
 
     <div id="hud-doom" class="hud hidden">
       <div class="stat">
-        <span class="label">生命</span>
+        <span class="label" id="doom-p1-label">生命</span>
         <div class="bar"><div id="doom-hp-fill"></div></div>
         <span id="doom-hp-text">100</span>
+      </div>
+      <div class="stat hidden" id="doom-p2-stat">
+        <span class="label" style="color:#3a6ea5">P2</span>
+        <div class="bar"><div id="doom-hp2-fill"></div></div>
+        <span id="doom-hp2-text">100</span>
       </div>
       <div class="stat time">
         <span id="doom-wave-text">波次 1</span>
@@ -516,9 +521,12 @@
 
     <div id="overlay-doom" class="overlay hidden">
       <div class="panel">
-        <h2>深瞳模式</h2>
-        <p class="sub">伪 3D 迷宫 · 眼球潮涌 · 波次生存<br />WASD 移动 · 鼠标转向 · 左键/空格射击 · Esc 解锁鼠标</p>
-        <button id="btn-start-doom" type="button">进入深瞳</button>
+        <h2>射击模式</h2>
+        <p class="sub" id="doom-overlay-sub">伪 3D 迷宫 · 九尾狐/眼球怪/飞虎虫 · 波次生存<br />WASD 移动 · 鼠标转向 · 左键/空格/J 射击 · 2/3/4 切枪 · Esc 解锁鼠标</p>
+        <div class="btn-row" style="justify-content:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.5rem">
+          <button id="btn-join-doom" type="button" class="btn-ghost">加入 2P</button>
+          <button id="btn-start-doom" type="button">开始射击</button>
+        </div>
         <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
       </div>
     </div>
@@ -583,6 +591,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260930doom"></script>
+  <script type="module" src="js/main.js?v=20260930ff"></script>
 </body>
 </html>

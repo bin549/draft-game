@@ -7,7 +7,7 @@ import { startIcefire, stopIcefire } from "./icefire.js?v=20260930a";
 import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260930a";
 import { startThief, stopThief } from "./thief.js?v=20260929h";
 import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
-import { startDoom, stopDoom } from "./doom.js?v=20260930a";
+import { startDoom, stopDoom } from "./doom.js?v=20260930h";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters } from "./monsters.js";
@@ -287,11 +287,17 @@ async function enterMode(mode) {
         resultText: document.getElementById("doom-result-text"),
         hpFill: document.getElementById("doom-hp-fill"),
         hpText: document.getElementById("doom-hp-text"),
+        hp2Fill: document.getElementById("doom-hp2-fill"),
+        hp2Text: document.getElementById("doom-hp2-text"),
+        p1Label: document.getElementById("doom-p1-label"),
+        p2Stat: document.getElementById("doom-p2-stat"),
         waveText: document.getElementById("doom-wave-text"),
         killText: document.getElementById("doom-kill-text"),
         enemyText: document.getElementById("doom-enemy-text"),
+        overlaySub: document.getElementById("doom-overlay-sub"),
         btnStart: document.getElementById("btn-start-doom"),
         btnRestart: document.getElementById("btn-restart-doom"),
+        btnJoin: document.getElementById("btn-join-doom"),
       },
     });
   }
@@ -931,10 +937,14 @@ function drawMenuPreviews() {
     ctx.lineTo(w * 0.5, h * 0.48 + 8);
     ctx.stroke();
 
+    // 分屏示意中缝
+    ctx.fillStyle = "rgba(26,26,26,0.35)";
+    ctx.fillRect(w * 0.5 - 1, 0, 2, h);
+
     ctx.fillStyle = "#1a1a1a";
     ctx.font = "bold 12px Songti SC, serif";
     ctx.textAlign = "center";
-    ctx.fillText("DOOM?", w * 0.5, h * 0.14);
+    ctx.fillText("射击", w * 0.5, h * 0.14);
   });
 }
 
