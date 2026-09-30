@@ -8,7 +8,7 @@ const META_SRC = "assets/player/icefire/meta.json";
 const GRAVITY = 1950;
 const JUMP_V = -820;
 const MOVE_SPEED = 220;
-const PUSH_SPEED = 145;
+const PUSH_SPEED = 70;
 const ANIM_RUN_FPS = 12;
 const ANIM_JUMP_FPS = 14;
 const ANIM_IDLE_FPS = 8;
@@ -331,12 +331,13 @@ function buildLevel(stage) {
       ],
       gates: [
         gate("G1", 458, r2, 70),
-        gate("G2", 740, r2, 70, "B1"),
+        gate("G2", 800, r2, 70, "B1"),
       ],
       buttons: [
-        { id: "B1", x: 880, y: r2 - 3, w: 56, h: 3, pressed: false, gate: "G2" },
+        { id: "B1", x: 860, y: r2 - 3, w: 48, h: 3, pressed: false, gate: "G2" },
       ],
-      boxes: [{ x: 940, y: r2 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
+      // 箱子在按钮右侧并留出站位，避免贴墙推不动
+      boxes: [{ x: 930, y: r2 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
       vines: [
         [90, r0], [500, r0], [940, r0], [150, r1], [900, r1],
         [200, r2], [120, r3], [950, r3],
@@ -401,9 +402,9 @@ function buildLevel(stage) {
         gate("G3", 500, r3, 70, "B1"),
       ],
       buttons: [
-        { id: "B1", x: 880, y: r3 - 3, w: 56, h: 3, pressed: false, gate: "G3" },
+        { id: "B1", x: 860, y: r3 - 3, w: 48, h: 3, pressed: false, gate: "G3" },
       ],
-      boxes: [{ x: 940, y: r3 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
+      boxes: [{ x: 930, y: r3 - BOX_SIZE, w: BOX_SIZE, h: BOX_SIZE, vx: 0, vy: 0 }],
       vines: [
         [80, r0], [500, r0], [940, r0], [150, r1], [900, r1],
         [200, r2], [120, r3], [950, r3],
@@ -415,7 +416,7 @@ function buildLevel(stage) {
   return level;
 }
 
-function initState(stage = 1) {
+function initState(stage = 1, carry = null) {
   const level = buildLevel(stage);
 
   for (const g of level.gates) {
@@ -434,6 +435,7 @@ function initState(stage = 1) {
       makePlayer("fire", level.spawn.fire[0], level.spawn.fire[1]),
     ],
     time: 0,
+    totalTime: carry?.totalTime || 0,
     ended: false,
     won: false,
     shake: 0,
@@ -603,24 +605,46 @@ function resolveEntity(ent, dt, ignoreBox = null) {
   }
 }
 
-function tryPushBox(p, dt) {
+function boxFitsAt(x, y, box) {
+  const blocks = solidBlocks().filter((b) => b.box !== box);
+  for (const pl of blocks) {
+    if (rectOverlap(x, y + 2, box.w, box.h - 4, pl.x, pl.y, pl.w, pl.h)) return false;
+  }
+  return true;
+}
+
+/** 按键方向贴箱即推，与行走同速，无需硬顶 */
+function tryPushBox(p, move, dt) {
   p.pushing = false;
-  if (!p.onGround || Math.abs(p.vx) < 10) return;
+  p._ignoreBox = null;
+  if (!p.onGround || move === 0) return;
+
   const hw = p.w / 2;
-  const hh = p.h / 2;
   const left = p.x - hw;
-  const top = p.y - hh;
+  const top = p.y - p.h / 2 + 6;
+  const h = p.h - 12;
+  const REACH = 12;
+
   for (const box of state.level.boxes) {
-    if (!rectOverlap(left, top, p.w, p.h, box.x - 2, box.y, box.w + 4, box.h)) continue;
-    const dir = p.vx > 0 ? 1 : -1;
-    const boxCenter = box.x + box.w / 2;
-    if ((dir > 0 && p.x > boxCenter) || (dir < 0 && p.x < boxCenter)) continue;
-    box.vx = dir * PUSH_SPEED;
-    p.vx = dir * PUSH_SPEED;
+    if (top >= box.y + box.h || top + h <= box.y) continue;
+
+    const fromLeft = move > 0 && left + p.w >= box.x - REACH && left < box.x + box.w * 0.55;
+    const fromRight =
+      move < 0 && left <= box.x + box.w + REACH && left + p.w > box.x + box.w * 0.45;
+    if (!fromLeft && !fromRight) continue;
+
+    const nx = box.x + move * PUSH_SPEED * dt;
+    if (!boxFitsAt(nx, box.y, box)) continue;
+
+    box.x = nx;
+    box.vx = move * PUSH_SPEED;
+    box._pushed = true;
     p.pushing = true;
-    // 简单推开
-    if (dir > 0) box.x = Math.max(box.x, p.x + hw);
-    else box.x = Math.min(box.x, p.x - hw - box.w);
+    p._ignoreBox = box;
+    // 人贴箱面一起走
+    if (move > 0) p.x = box.x - hw;
+    else p.x = box.x + box.w + hw;
+    break;
   }
 }
 
@@ -628,10 +652,13 @@ function updateBoxes(dt) {
   for (const box of state.level.boxes) {
     box.isBox = true;
     box.kind = null;
-    if (!box._pushed) box.vx *= 0.85;
+    if (!box._pushed) box.vx *= 0.75;
     resolveEntity(box, dt, box);
-    box.vx *= 0.9;
-    if (Math.abs(box.vx) < 5) box.vx = 0;
+    if (!box._pushed) {
+      box.vx *= 0.85;
+      if (Math.abs(box.vx) < 5) box.vx = 0;
+    }
+    box._pushed = false;
   }
 }
 
@@ -669,31 +696,27 @@ function updateLeversAndGates(dt) {
     }
   }
 
-  // 按钮：角色或箱子压住 → 开对应闸门（贴地薄片，不挡箱子）
+  // 按钮：角色或箱子压住 → 开对应闸门（需真正压在按钮上，邻接不算）
   for (const b of level.buttons) {
     b.pressed = false;
     for (const p of state.players) {
       if (p.dead) continue;
       const feetX = p.x - p.w / 2;
       const feetY = p.y + p.h / 2 - 4;
-      if (rectOverlap(feetX, feetY, p.w, 8, b.x - 6, b.y - 6, b.w + 12, b.h + 16)) {
+      if (rectOverlap(feetX, feetY, p.w, 8, b.x, b.y - 4, b.w, b.h + 10)) {
         b.pressed = true;
         break;
       }
     }
     if (!b.pressed) {
       for (const box of level.boxes) {
+        const overlapL = Math.max(box.x, b.x);
+        const overlapR = Math.min(box.x + box.w, b.x + b.w);
+        const overlapW = overlapR - overlapL;
+        // 至少压住按钮一半宽度才算踩中
         if (
-          rectOverlap(
-            box.x,
-            box.y + box.h - 8,
-            box.w,
-            16,
-            b.x - 8,
-            b.y - 8,
-            b.w + 16,
-            b.h + 20
-          )
+          overlapW >= b.w * 0.45 &&
+          rectOverlap(box.x, box.y + box.h - 6, box.w, 10, b.x, b.y - 4, b.w, b.h + 12)
         ) {
           b.pressed = true;
           break;
@@ -726,7 +749,6 @@ function updatePlayer(dt, p) {
   let move = 0;
   if (keyDown(c.left)) move -= 1;
   if (keyDown(c.right)) move += 1;
-  p.vx = move * (p.pushing ? PUSH_SPEED : MOVE_SPEED);
   if (move !== 0) p.facing = move;
 
   if (p.onGround) p.coyote = 0.14;
@@ -744,8 +766,11 @@ function updatePlayer(dt, p) {
     p._jumpHeld = false;
   }
 
-  resolveEntity(p, dt);
-  tryPushBox(p, dt);
+  // 先按方向推箱，再位移；被推的箱子本帧不当墙
+  tryPushBox(p, move, dt);
+  // 推动时水平已跟箱同步，避免再叠一层位移
+  p.vx = p.pushing ? 0 : move * MOVE_SPEED;
+  resolveEntity(p, dt, p._ignoreBox);
 
   const left = p.x - p.w / 2;
   const top = p.y - p.h / 2;
@@ -1296,25 +1321,25 @@ function endGame(won) {
   if (state.ended) return;
   state.ended = true;
   state.won = won;
+  state.totalTime = (state.totalTime || 0) + state.time;
+
+  // 中间关通关：直接进下一关，不弹结算
+  if (won && state.stage < MAX_STAGES) {
+    beginGame(state.stage + 1, { totalTime: state.totalTime });
+    return;
+  }
+
   if (!els.gameover) return;
   els.gameover.classList.remove("hidden");
   if (els.endTitle) els.endTitle.textContent = won ? "逃亡成功！" : "逃亡失败";
   if (els.resultText) {
-    const sec = Math.floor(state.time);
+    const sec = Math.floor(won ? state.totalTime : state.time);
     const t = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-    if (won) {
-      els.resultText.textContent =
-        state.stage >= MAX_STAGES
-          ? `全部关卡逃出！用时 ${t}`
-          : `第 ${state.stage} 关逃出（用时 ${t}），准备下一关。`;
-    } else {
-      els.resultText.textContent = "注意元素池、闸门与推箱。";
-    }
+    els.resultText.textContent = won
+      ? `全部关卡逃出！用时 ${t}`
+      : "注意元素池、闸门与推箱。";
   }
-  if (els.btnRestart) {
-    els.btnRestart.textContent =
-      won && state.stage < MAX_STAGES ? "下一关" : "再来一局";
-  }
+  if (els.btnRestart) els.btnRestart.textContent = "再来一局";
 }
 
 function snapshotKeys() {
@@ -1365,9 +1390,9 @@ function hideOverlay() {
   els.hud?.classList.remove("hidden");
 }
 
-async function beginGame(stage = 1) {
+async function beginGame(stage = 1, carry = null) {
   await ensureAssets();
-  initState(stage);
+  initState(stage, carry);
   hideOverlay();
   els.gameover?.classList.add("hidden");
   if (els.hint) {
@@ -1383,8 +1408,8 @@ function onRestart() {
     beginGame(1);
     return;
   }
-  if (state.won && state.stage < MAX_STAGES) beginGame(state.stage + 1);
-  else beginGame(state.won ? 1 : state.stage);
+  // 失败重试本关；全通后从第一关重来
+  beginGame(state.won ? 1 : state.stage);
 }
 
 export async function startIcefire({ canvas: c, els: e }) {

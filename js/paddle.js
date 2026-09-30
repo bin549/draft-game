@@ -1146,7 +1146,7 @@ function loop(ts) {
 }
 
 function beginRun() {
-  ensureAssets().then(() => {
+  return ensureAssets().then(() => {
     state = createState();
     applyPlayerSize();
 
@@ -1181,11 +1181,12 @@ function beginRestart() {
   });
 }
 
-export function startPaddle(options) {
+export async function startPaddle(options) {
   canvas = options.canvas;
   ctx = canvas.getContext("2d");
   els = options.els;
   keys = Object.create(null);
+  offAll();
 
   els.hud?.classList.remove("hidden");
   els.overlay?.classList.add("hidden");
@@ -1210,12 +1211,8 @@ export function startPaddle(options) {
   els.btnStart.onclick = () => beginRun();
   els.btnRestart.onclick = () => beginRestart();
 
-  ensureAssets().then(() => {
-    // 预览首屏
-    state = createState();
-    render();
-  });
-  beginRun();
+  // 等资源就绪再开局，避免舞台先露出来一片空白
+  await beginRun();
 }
 
 export function stopPaddle() {

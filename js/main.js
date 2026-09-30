@@ -2,8 +2,8 @@ import { startSurvivor, stopSurvivor } from "./survivor.js?v=20260927e";
 import { startPlatform, stopPlatform } from "./platform.js?v=20260929k";
 import { startTower, stopTower } from "./tower.js";
 import { startRhythm, stopRhythm, handleRhythmBack } from "./rhythm.js?v=20260927o";
-import { startPaddle, stopPaddle } from "./paddle.js?v=20260929o";
-import { startIcefire, stopIcefire } from "./icefire.js?v=20260930descend";
+import { startPaddle, stopPaddle } from "./paddle.js?v=20260930load";
+import { startIcefire, stopIcefire } from "./icefire.js?v=20260930autonext";
 import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.js?v=20260930a";
 import { startThief, stopThief } from "./thief.js?v=20260929h";
 import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
@@ -82,7 +82,7 @@ async function enterMode(mode) {
   stopActive();
   hideAllModeUi();
 
-  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom"].includes(mode);
+  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom", "paddle"].includes(mode);
   // 先盖住菜单再拉资源；舞台等 start 完成后再露，避免空白渐变
   if (needsLoad) {
     showLoading("正在加载中…");
@@ -194,7 +194,7 @@ async function enterMode(mode) {
       },
     });
   } else if (mode === "paddle") {
-    startPaddle({
+    await startPaddle({
       canvas,
       els: {
         hud: document.getElementById("hud-paddle"),
