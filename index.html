@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20260930menubg" />
+  <link rel="stylesheet" href="css/style.css?v=20261001versus1" />
   <style>@keyframes loading-spin{to{transform:rotate(360deg)}}</style>
   <script>
     (function () {
@@ -154,6 +154,39 @@
             <h2>射击模式</h2>
             <p>伪 3D 迷宫 · 怪潮波次 · 可分屏双人</p>
             <p class="controls">P1：WASD · A/D转身 · J射击 · P2：←→转身 · Shift射击</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="match3" type="button">
+          <div class="card-preview" id="preview-match3">
+            <span class="preview-badge solo">单人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">11</span><span class="tag match3">消除</span></div>
+            <h2>消除模式</h2>
+            <p>怪物棋子 · 三连消除 · 限步通关</p>
+            <p class="controls">点击选中 · 再点相邻交换</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="sling" type="button">
+          <div class="card-preview" id="preview-sling">
+            <span class="preview-badge solo">单人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">12</span><span class="tag sling">弹射</span></div>
+            <h2>弹射模式</h2>
+            <p>怪物弹弓 · 砸垮木石 · 打倒鼠鼠</p>
+            <p class="controls">拖拽拉弓瞄准 · 松手发射</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="arcade" type="button">
+          <div class="card-preview" id="preview-arcade">
+            <span class="preview-badge coop">可双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">13</span><span class="tag-row"><span class="tag arcade">炸弹</span><span class="tag wip">开发中</span></span></div>
+            <h2>炸弹模式</h2>
+            <p>后花园迷宫 · 放泡清怪 · 第三关仕女 Boss</p>
+            <p class="controls">P1：WASD + J放泡 · P2：方向键 + Shift放泡</p>
           </div>
         </button>
       </div>
@@ -312,6 +345,49 @@
         <span id="doom-wave-text">波次 1</span>
         <span id="doom-kill-text">击杀 0</span>
         <span id="doom-enemy-text">剩余 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="hud-match3" class="hud hidden">
+      <div class="stat">
+        <span class="label">进度</span>
+        <div class="bar xp"><div id="match3-progress-fill"></div></div>
+        <span id="match3-goal-text">目标 1200</span>
+      </div>
+      <div class="stat time">
+        <span id="match3-score-text">得分 0</span>
+        <span id="match3-moves-text">步数 28</span>
+        <span id="match3-stage-text">关卡 1/3</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="hud-sling" class="hud hidden">
+      <div class="stat">
+        <span class="label" id="sling-title-text">试射</span>
+        <span id="sling-enemy-text">剩余 0</span>
+      </div>
+      <div class="stat time">
+        <span id="sling-score-text">得分 0</span>
+        <span id="sling-birds-text">弹药 3</span>
+        <span id="sling-stage-text">关卡 1/3</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="hud-arcade" class="hud hidden">
+      <div class="stat">
+        <span class="label" style="color:#3a6ea5">P1</span>
+        <span id="arcade-p1-text">P1 ❤3</span>
+      </div>
+      <div class="stat hidden" id="arcade-p2-stat">
+        <span class="label" style="color:#c45c26">P2</span>
+        <span id="arcade-p2-text">P2 ❤3</span>
+      </div>
+      <div class="stat time">
+        <span id="arcade-mob-text">怪物 0</span>
+        <span id="arcade-stage-text">关卡 1/3</span>
       </div>
       <button type="button" class="btn-back" data-back>返回菜单</button>
     </div>
@@ -542,6 +618,78 @@
       </div>
     </div>
 
+    <div id="overlay-match3" class="overlay hidden">
+      <div class="panel">
+        <h2>消除模式</h2>
+        <p class="sub">怪物棋子三连消除 · 限步达成目标分<br />点击选中，再点相邻格子交换</p>
+        <button id="btn-start-match3" type="button">开始消除</button>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-match3" class="overlay hidden">
+      <div class="panel">
+        <h2 id="match3-end-title">通关！</h2>
+        <p id="match3-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-match3" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay-sling" class="overlay hidden">
+      <div class="panel">
+        <h2>弹射模式</h2>
+        <p class="sub">拖拽怪物拉弓发射 · 砸垮木石结构 · 打倒全部鼠鼠<br />中间关通关直接进入下一关</p>
+        <button id="btn-start-sling" type="button">开始弹射</button>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-sling" class="overlay hidden">
+      <div class="panel">
+        <h2 id="sling-end-title">通关！</h2>
+        <p id="sling-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-sling" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay-arcade" class="overlay hidden">
+      <div class="panel" style="max-width:28rem">
+        <h2>炸弹模式</h2>
+        <p class="sub" id="arcade-overlay-sub">选择玩法后开始</p>
+        <div class="arcade-pick" id="arcade-mode-pick" style="display:flex;gap:0.5rem;justify-content:center;flex-wrap:wrap;margin:0.75rem 0 0.4rem">
+          <button type="button" class="btn-ghost active" data-arcade-mode="monster" id="btn-arcade-monster">怪物模式</button>
+          <button type="button" class="btn-ghost" data-arcade-mode="versus" id="btn-arcade-versus">对战模式</button>
+        </div>
+        <div id="arcade-versus-pick" class="hidden" style="display:none;gap:0.45rem;justify-content:center;flex-wrap:wrap;margin:0.35rem 0 0.6rem">
+          <button type="button" class="btn-ghost active" data-versus-kind="pvp" id="btn-versus-pvp">双人单挑</button>
+          <button type="button" class="btn-ghost" data-versus-kind="cpu" id="btn-versus-cpu">单挑人机</button>
+          <button type="button" class="btn-ghost" data-versus-kind="coop_cpu" id="btn-versus-coop">合作打人机</button>
+        </div>
+        <div class="btn-row" style="justify-content:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.5rem">
+          <button id="btn-join-arcade" type="button" class="btn-ghost">加入 2P</button>
+          <button id="btn-start-arcade" type="button">开始冒险</button>
+        </div>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-arcade" class="overlay hidden">
+      <div class="panel">
+        <h2 id="arcade-end-title">通关！</h2>
+        <p id="arcade-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-arcade" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
@@ -591,6 +739,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20260930spriteperf"></script>
+  <script type="module" src="js/main.js?v=20261001noshake"></script>
 </body>
 </html>

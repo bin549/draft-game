@@ -310,6 +310,36 @@ html.is-mobile #mobile-gate {
   background: rgba(60, 90, 70, 0.22);
 }
 
+.tag.match3 {
+  background: rgba(196, 92, 38, 0.18);
+}
+
+.tag.sling {
+  background: rgba(90, 144, 208, 0.22);
+}
+
+.tag.arcade {
+  background: rgba(58, 160, 232, 0.2);
+}
+
+.tag.wip {
+  background: rgba(180, 140, 40, 0.22);
+}
+
+#arcade-mode-pick .btn-ghost.active,
+#arcade-versus-pick .btn-ghost.active,
+#hud-arcade .btn-ghost.active,
+#btn-join-arcade.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+#arcade-versus-pick:not(.hidden) {
+  display: flex !important;
+}
+
+#match3-progress-fill { background: var(--xp); }
+
 #doom-hp-fill { background: var(--hp); }
 #doom-hp2-fill { background: #3a6ea5; }
 

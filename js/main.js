@@ -8,16 +8,19 @@ import { startTowerfall, stopTowerfall, handleTowerfallBack } from "./towerfall.
 import { startThief, stopThief } from "./thief.js?v=20260929h";
 import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
 import { startDoom, stopDoom } from "./doom.js?v=20260930spriteperf";
+import { startMatch3, stopMatch3 } from "./match3.js?v=20261001b";
+import { startSling, stopSling } from "./sling.js?v=20261001static";
+import { startArcade, stopArcade } from "./arcade.js?v=20261001noshake";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
-import { loadMonsters } from "./monsters.js";
+import { loadMonsters, getMonsterSprite } from "./monsters.js";
 
 const menu = document.getElementById("menu");
 const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
 const loadingScreen = document.getElementById("loading-screen");
 
-const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup", "doom"];
+const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup", "doom", "match3", "sling", "arcade"];
 
 let activeMode = null;
 
@@ -74,6 +77,9 @@ function stopActive() {
   if (activeMode === "thief") stopThief();
   if (activeMode === "dressup") stopDressup();
   if (activeMode === "doom") stopDoom();
+  if (activeMode === "match3") stopMatch3();
+  if (activeMode === "sling") stopSling();
+  if (activeMode === "arcade") stopArcade();
   activeMode = null;
 }
 
@@ -82,7 +88,7 @@ async function enterMode(mode) {
   stopActive();
   hideAllModeUi();
 
-  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom", "paddle"].includes(mode);
+  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom", "paddle", "match3", "sling", "arcade"].includes(mode);
   // 先盖住菜单再拉资源；舞台等 start 完成后再露，避免空白渐变
   if (needsLoad) {
     showLoading("正在加载中…");
@@ -298,6 +304,69 @@ async function enterMode(mode) {
         btnStart: document.getElementById("btn-start-doom"),
         btnRestart: document.getElementById("btn-restart-doom"),
         btnJoin: document.getElementById("btn-join-doom"),
+      },
+    });
+  } else if (mode === "match3") {
+    await startMatch3({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-match3"),
+        overlay: document.getElementById("overlay-match3"),
+        gameover: document.getElementById("gameover-match3"),
+        endTitle: document.getElementById("match3-end-title"),
+        resultText: document.getElementById("match3-result-text"),
+        scoreText: document.getElementById("match3-score-text"),
+        movesText: document.getElementById("match3-moves-text"),
+        goalText: document.getElementById("match3-goal-text"),
+        stageText: document.getElementById("match3-stage-text"),
+        progressFill: document.getElementById("match3-progress-fill"),
+        btnStart: document.getElementById("btn-start-match3"),
+        btnRestart: document.getElementById("btn-restart-match3"),
+      },
+    });
+  } else if (mode === "sling") {
+    await startSling({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-sling"),
+        overlay: document.getElementById("overlay-sling"),
+        gameover: document.getElementById("gameover-sling"),
+        endTitle: document.getElementById("sling-end-title"),
+        resultText: document.getElementById("sling-result-text"),
+        scoreText: document.getElementById("sling-score-text"),
+        birdsText: document.getElementById("sling-birds-text"),
+        enemyText: document.getElementById("sling-enemy-text"),
+        stageText: document.getElementById("sling-stage-text"),
+        titleText: document.getElementById("sling-title-text"),
+        btnStart: document.getElementById("btn-start-sling"),
+        btnRestart: document.getElementById("btn-restart-sling"),
+      },
+    });
+  } else if (mode === "arcade") {
+    await startArcade({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-arcade"),
+        overlay: document.getElementById("overlay-arcade"),
+        gameover: document.getElementById("gameover-arcade"),
+        endTitle: document.getElementById("arcade-end-title"),
+        resultText: document.getElementById("arcade-result-text"),
+        p1Text: document.getElementById("arcade-p1-text"),
+        p2Text: document.getElementById("arcade-p2-text"),
+        p2Stat: document.getElementById("arcade-p2-stat"),
+        mobText: document.getElementById("arcade-mob-text"),
+        stageText: document.getElementById("arcade-stage-text"),
+        overlaySub: document.getElementById("arcade-overlay-sub"),
+        btnStart: document.getElementById("btn-start-arcade"),
+        btnRestart: document.getElementById("btn-restart-arcade"),
+        btnJoin: document.getElementById("btn-join-arcade"),
+        modePick: document.getElementById("arcade-mode-pick"),
+        versusPick: document.getElementById("arcade-versus-pick"),
+        btnModeMonster: document.getElementById("btn-arcade-monster"),
+        btnModeVersus: document.getElementById("btn-arcade-versus"),
+        btnVersusPvp: document.getElementById("btn-versus-pvp"),
+        btnVersusCpu: document.getElementById("btn-versus-cpu"),
+        btnVersusCoop: document.getElementById("btn-versus-coop"),
       },
     });
   }
@@ -946,6 +1015,152 @@ function drawMenuPreviews() {
     ctx.textAlign = "center";
     ctx.fillText("射击", w * 0.5, h * 0.14);
   });
+
+  setupPreviewCanvas("preview-match3", (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "#ebe4d6");
+    g.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    const types = ["eyeball-1", "nine-tail-fox-1", "tiger-1", "thief-1", "official-1", "boat-man-1"];
+    const cols = 4;
+    const rows = 2;
+    const cell = Math.min((w - 28) / cols, (h - 36) / rows);
+    const ox = (w - cell * cols) / 2;
+    const oy = (h - cell * rows) / 2 + 4;
+    ctx.fillStyle = "rgba(242,239,230,0.9)";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(ox - 6, oy - 6, cell * cols + 12, cell * rows + 12, 8);
+    else ctx.rect(ox - 6, oy - 6, cell * cols + 12, cell * rows + 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(ox, oy, cell * cols, cell * rows);
+    ctx.clip();
+    for (let i = 0; i < types.length; i++) {
+      const c = i % cols;
+      const r = (i / cols) | 0;
+      const x = ox + (c + 0.5) * cell;
+      const y = oy + (r + 0.5) * cell;
+      ctx.fillStyle = (c + r) % 2 === 0 ? "rgba(255,255,255,0.4)" : "rgba(26,26,26,0.04)";
+      ctx.fillRect(ox + c * cell + 1, oy + r * cell + 1, cell - 2, cell - 2);
+      const spr = getMonsterSprite(types[i]);
+      if (!spr) continue;
+      const fit = cell * 0.82;
+      const sc = Math.min(fit / spr.w, fit / spr.h);
+      const dw = spr.w * sc;
+      const dh = spr.h * sc;
+      ctx.drawImage(spr.canvas, x - dw / 2, y - dh / 2, dw, dh);
+    }
+    ctx.restore();
+  });
+
+  setupPreviewCanvas("preview-sling", (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, "#d8e4ec");
+    g.addColorStop(0.55, "#e8e0d2");
+    g.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.fillStyle = "#8faf7a";
+    ctx.fillRect(0, h * 0.78, w, h * 0.05);
+    ctx.fillStyle = "#cfc4b0";
+    ctx.fillRect(0, h * 0.82, w, h);
+
+    // 弹弓贴地
+    ctx.strokeStyle = "#5a3a22";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.18, h * 0.78);
+    ctx.lineTo(w * 0.2, h * 0.48);
+    ctx.moveTo(w * 0.28, h * 0.78);
+    ctx.lineTo(w * 0.26, h * 0.48);
+    ctx.stroke();
+    ctx.strokeStyle = "#6b3030";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.2, h * 0.5);
+    ctx.lineTo(w * 0.14, h * 0.6);
+    ctx.lineTo(w * 0.26, h * 0.5);
+    ctx.stroke();
+
+    // 弹射体：怪物
+    const ammo = getMonsterSprite("eyeball-1");
+    if (ammo) {
+      const s = Math.min(28 / ammo.w, 28 / ammo.h);
+      ctx.drawImage(ammo.canvas, w * 0.14 - (ammo.w * s) / 2, h * 0.6 - (ammo.h * s) / 2, ammo.w * s, ammo.h * s);
+    } else {
+      drawEyeball(ctx, w * 0.14, h * 0.6, 0.45, 0, 0);
+    }
+
+    // 木结构 + 鼠敌
+    ctx.fillStyle = "#c4a574";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(w * 0.58, h * 0.52, 12, 40);
+    ctx.strokeRect(w * 0.58, h * 0.52, 12, 40);
+    ctx.fillRect(w * 0.72, h * 0.52, 12, 40);
+    ctx.strokeRect(w * 0.72, h * 0.52, 12, 40);
+    ctx.fillRect(w * 0.58, h * 0.45, 86, 12);
+    ctx.strokeRect(w * 0.58, h * 0.45, 86, 12);
+
+    ctx.fillStyle = "#e890b0";
+    ctx.beginPath();
+    ctx.arc(w * 0.68, h * 0.72, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.stroke();
+
+    ctx.strokeStyle = "rgba(26,26,26,0.35)";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.16, h * 0.55);
+    ctx.quadraticCurveTo(w * 0.4, h * 0.22, w * 0.62, h * 0.58);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  setupPreviewCanvas("preview-arcade", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#7fbf63";
+    ctx.fillRect(12, 18, w - 24, h - 30);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(12.5, 18.5, w - 24, h - 30);
+    ctx.fillStyle = "#e8d3a4";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.ellipse(28 + i * ((w - 50) / 4), 28, 10, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#d8b06a";
+    ctx.fillRect(w * 0.42, h * 0.38, 22, 22);
+    ctx.strokeRect(w * 0.42, h * 0.38, 22, 22);
+    ctx.fillStyle = "#3aa0e8";
+    ctx.beginPath();
+    ctx.arc(w * 0.32, h * 0.62, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    drawEyeball(ctx, w * 0.68, h * 0.62, 0.55, 0, 0);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("炸弹", w * 0.5, h * 0.16);
+  });
 }
 
 document.getElementById("game-grid").addEventListener("click", (e) => {
@@ -973,6 +1188,8 @@ if (document.documentElement.classList.contains("is-mobile")) {
   stage.setAttribute("inert", "");
 }
 
-loadMonsters(); // 预加载局内位图怪，菜单预览仍用矢量
+loadMonsters().then(() => {
+  if (!menu.classList.contains("hidden")) drawMenuPreviews();
+});
 drawMenuPreviews();
 hideLoading();
