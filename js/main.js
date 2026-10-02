@@ -10,7 +10,7 @@ import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
 import { startDoom, stopDoom } from "./doom.js?v=20260930spriteperf";
 import { startMatch3, stopMatch3 } from "./match3.js?v=20261001b";
 import { startSling, stopSling } from "./sling.js?v=20261001static";
-import { startArcade, stopArcade } from "./arcade.js?v=20261001noshake";
+import { startArcade, stopArcade } from "./arcade.js?v=20261001restart";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters, getMonsterSprite } from "./monsters.js";

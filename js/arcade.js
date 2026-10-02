@@ -711,11 +711,11 @@ function lobbyCopy() {
     return "对战 · 双人单挑<br />P1：WASD+J　P2：方向键+Shift<br />最后存活者获胜";
   }
   if (versusKind === "cpu") {
-    return "对战 · 单挑人机<br />P1：WASD + J/空格放泡<br />打倒红色人机获胜";
+    return "对战 · 单挑人机<br />P1：WASD + J/空格放泡<br />打倒米色泡的无面仕女";
   }
   return coopWanted
-    ? "对战 · 合作打人机（双人）<br />P1：WASD+J　P2：方向键+Shift<br />一起打倒人机"
-    : "对战 · 合作打人机（可加 2P）<br />P1：WASD + J/空格放泡<br />一人或两人一起对抗人机";
+    ? "对战 · 合作打人机（双人）<br />P1：WASD+J　P2：方向键+Shift<br />一起打倒仕女人机"
+    : "对战 · 合作打人机（可加 2P）<br />P1：WASD + J/空格放泡<br />一人或两人一起对抗仕女人机";
 }
 
 function syncLobbyUi() {
@@ -809,6 +809,11 @@ function tryPlaceBomb(p) {
 }
 
 function explodeBomb(bomb) {
+  if (!bomb || bomb._exploded) return;
+  bomb._exploded = true;
+  const idx = state.bombs.indexOf(bomb);
+  if (idx >= 0) state.bombs.splice(idx, 1);
+
   const cells = [{ gx: bomb.gx, gy: bomb.gy }];
   for (const d of DIRS) {
     for (let i = 1; i <= bomb.range; i++) {
@@ -820,24 +825,17 @@ function explodeBomb(bomb) {
       cells.push({ gx: c, gy: r });
       if (t === 2 || t === 3) {
         setTile(c, r, 0);
-        // 木箱掉率更高，绿篱稍低
         maybeDropItem(c, r, t === 2 ? 0.58 : 0.38);
         addBurst(c + 0.5, r + 0.5, t === 3 ? "#5a9a4a" : "#c4a574", 7);
         break;
       }
     }
   }
-  state.flames.push({ cells, t: FIRE_LIFE });
-  state.shake = Math.max(state.shake, 0.16);
-  // 连锁
-  for (let i = state.bombs.length - 1; i >= 0; i--) {
-    const b = state.bombs[i];
-    if (b === bomb) continue;
-    if (cells.some((c) => c.gx === b.gx && c.gy === b.gy)) {
-      state.bombs.splice(i, 1);
-      explodeBomb(b);
-    }
-  }
+  state.flames.push({ cells, t: FIRE_LIFE, owner: bomb.owner });
+  if (state.phase === "play") state.shake = Math.max(state.shake, 0.16);
+
+  const chained = state.bombs.filter((b) => cells.some((c) => c.gx === b.gx && c.gy === b.gy));
+  for (const b of chained) explodeBomb(b);
 }
 
 function flameAt(c, r) {
@@ -1253,11 +1251,9 @@ function update(dt) {
 
   for (let i = state.bombs.length - 1; i >= 0; i--) {
     const b = state.bombs[i];
+    if (!b || b._exploded) continue;
     b.t -= dt;
-    if (b.t <= 0) {
-      state.bombs.splice(i, 1);
-      explodeBomb(b);
-    }
+    if (b.t <= 0) explodeBomb(b);
   }
   for (let i = state.flames.length - 1; i >= 0; i--) {
     state.flames[i].t -= dt;
@@ -1491,12 +1487,26 @@ function drawItem(it, L) {
   }
 }
 
+function ownerTint(owner) {
+  const p = state?.players?.find((pl) => pl.slot === owner);
+  if (p?.team === "cpu" || (owner != null && owner >= 2)) return "beige";
+  if (owner === 1) return "red";
+  return "blue";
+}
+
+const TINT = {
+  blue: { bomb: "#3aa0e8", flame: "rgba(90,190,255,0.85)" },
+  red: { bomb: "#e24b4b", flame: "rgba(226,75,75,0.85)" },
+  beige: { bomb: "#e8d4a8", flame: "rgba(220,190,140,0.88)" },
+};
+
 function drawBomb(b, L) {
   const x = L.ox + (b.gx + 0.5) * L.cell;
   const y = L.oy + (b.gy + 0.5) * L.cell;
   const pulse = 1 + Math.sin(state.time * 10 + b.t) * 0.08;
   const r = L.cell * 0.28 * pulse;
-  ctx.fillStyle = "#3aa0e8";
+  const tint = TINT[ownerTint(b.owner)] || TINT.blue;
+  ctx.fillStyle = tint.bomb;
   ctx.strokeStyle = "#1a1a1a";
   ctx.lineWidth = 1.8;
   ctx.beginPath();
@@ -1509,17 +1519,20 @@ function drawBomb(b, L) {
   ctx.fill();
 }
 
-function drawFlame(cell, L) {
-  const x = L.ox + (cell.gx + 0.5) * L.cell;
-  const y = L.oy + (cell.gy + 0.5) * L.cell;
-  ctx.fillStyle = "rgba(90,190,255,0.85)";
-  ctx.beginPath();
-  ctx.arc(x, y, L.cell * 0.36, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.beginPath();
-  ctx.arc(x, y, L.cell * 0.16, 0, Math.PI * 2);
-  ctx.fill();
+function drawFlameGroup(f, L) {
+  const tint = TINT[ownerTint(f.owner)] || TINT.blue;
+  for (const cell of f.cells) {
+    const x = L.ox + (cell.gx + 0.5) * L.cell;
+    const y = L.oy + (cell.gy + 0.5) * L.cell;
+    ctx.fillStyle = tint.flame;
+    ctx.beginPath();
+    ctx.arc(x, y, L.cell * 0.36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.beginPath();
+    ctx.arc(x, y, L.cell * 0.16, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 function frameOf(pack, dir, walking, anim) {
@@ -1568,19 +1581,42 @@ function drawActor(ent, pack, L, walking) {
 function drawBoss(L) {
   const b = state.boss;
   if (!b || b.hp <= 0 || !assets?.boss) return;
+  drawLadySprite(b.x, b.y, L, 2.15, b.hurt > 0);
   const x = L.ox + b.x * L.cell;
   const y = L.oy + b.y * L.cell;
   const h = L.cell * 2.15;
-  const w = (assets.boss.width / assets.boss.height) * h;
-  ctx.save();
-  if (b.hurt > 0) ctx.globalAlpha = 0.55 + Math.sin(b.hurt * 40) * 0.25;
-  ctx.drawImage(assets.boss, x - w / 2, y - h * 0.82, w, h);
-  ctx.restore();
   const bw = L.cell * 1.4;
   ctx.fillStyle = "rgba(26,26,26,0.35)";
   ctx.fillRect(x - bw / 2, y - h * 0.88, bw, 5);
   ctx.fillStyle = "#c23b3b";
   ctx.fillRect(x - bw / 2, y - h * 0.88, bw * (b.hp / b.maxHp), 5);
+}
+
+/** 无面仕女静态立绘（Boss / 人机） */
+function drawLadySprite(wx, wy, L, scale = 1.55, hurt = false) {
+  if (!assets?.boss) return;
+  const x = L.ox + wx * L.cell;
+  const y = L.oy + wy * L.cell;
+  const h = L.cell * scale;
+  const w = (assets.boss.width / assets.boss.height) * h;
+  ctx.save();
+  if (hurt) ctx.globalAlpha = 0.55 + Math.sin(state.time * 40) * 0.25;
+  ctx.drawImage(assets.boss, x - w / 2, y - h * 0.82, w, h);
+  ctx.restore();
+}
+
+function drawCpuPlayer(p, L) {
+  const bob = Math.sin(p.anim * 2.2) * 0.02;
+  const flash = p.invuln > 0;
+  if (!assets?.boss) return;
+  const x = L.ox + p.x * L.cell;
+  const y = L.oy + (p.y + bob) * L.cell;
+  const h = L.cell * 1.55;
+  const w = (assets.boss.width / assets.boss.height) * h;
+  ctx.save();
+  if (flash) ctx.globalAlpha = 0.5 + Math.sin(p.invuln * 24) * 0.3;
+  ctx.drawImage(assets.boss, x - w / 2, y - h * 0.82, w, h);
+  ctx.restore();
 }
 
 function render() {
@@ -1638,7 +1674,7 @@ function render() {
 
   for (const it of state.items) drawItem(it, L);
   for (const b of state.bombs) drawBomb(b, L);
-  for (const f of state.flames) for (const c of f.cells) drawFlame(c, L);
+  for (const f of state.flames) drawFlameGroup(f, L);
 
   const actors = [
     ...state.monsters.filter((m) => m.hp > 0).map((m) => ({ z: m.y, kind: "mob", m })),
@@ -1651,12 +1687,8 @@ function render() {
       const pack = a.m.type === "fox" ? assets.fox : assets.eyeball;
       drawActor(a.m, pack, L, a.m.moving);
     } else if (a.kind === "p") {
-      drawActor(
-        a.p,
-        a.p.team === "cpu" || a.p.slot === 1 ? assets.red : assets.blue,
-        L,
-        a.p.walking || a.p.moving
-      );
+      if (a.p.team === "cpu") drawCpuPlayer(a.p, L);
+      else drawActor(a.p, a.p.slot === 1 ? assets.red : assets.blue, L, a.p.walking || a.p.moving);
     } else drawBoss(L);
   }
 
@@ -1676,11 +1708,11 @@ function render() {
   let tip = "WASD 移动 · J/空格放泡";
   if (state.playMode === "versus") {
     if (state.versusKind === "pvp") tip = "P1 WASD+J · P2 方向键+Shift · 单挑至一人存活";
-    else if (state.versusKind === "cpu") tip = "WASD + J/空格放泡 · 打倒红色人机";
+    else if (state.versusKind === "cpu") tip = "WASD + J/空格放泡 · 打倒仕女人机";
     else
       tip = humanPlayers().length > 1
-        ? "P1 WASD+J · P2 方向键+Shift · 合作打倒人机"
-        : "WASD + J/空格放泡 · 打倒人机（可加 2P）";
+        ? "P1 WASD+J · P2 方向键+Shift · 合作打倒仕女人机"
+        : "WASD + J/空格放泡 · 打倒仕女人机（可加 2P）";
   } else if (humanPlayers().length > 1) {
     tip = "P1 WASD+J放泡 · P2 方向键+Shift放泡 · 清掉全部怪物";
   } else {
@@ -1739,7 +1771,7 @@ export async function startArcade({ canvas: c, els: e }) {
     keys[ev.code] = false;
   });
   on(els.btnStart, "click", () => beginGame(1));
-  on(els.btnRestart, "click", () => showLobby());
+  on(els.btnRestart, "click", () => beginGame(1));
   on(els.btnJoin, "click", toggleCoop);
   on(els.btnModeMonster, "click", () => setLobbyMode("monster"));
   on(els.btnModeVersus, "click", () => setLobbyMode("versus"));
