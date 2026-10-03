@@ -83,24 +83,11 @@ html.is-mobile #mobile-gate {
   justify-content: center;
 }
 
-.menu-header {
-  text-align: center;
-  margin-bottom: 0;
-  flex-shrink: 0;
-}
-
 .eyebrow {
   font-size: 0.85rem;
   letter-spacing: 0.18em;
   opacity: 0.55;
   margin-bottom: 0.55rem;
-}
-
-.menu-header h1 {
-  font-size: clamp(2rem, 5vw, 2.85rem);
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  margin-bottom: 0;
 }
 
 .menu-sub {
@@ -128,9 +115,6 @@ html.is-mobile #mobile-gate {
     padding: 1.25rem 1rem 1.75rem;
     justify-content: flex-start;
   }
-  .menu-header {
-    margin-bottom: 1.25rem;
-  }
   .game-grid {
     grid-template-columns: 1fr;
     gap: 0.85rem;
@@ -153,31 +137,38 @@ html.is-mobile #mobile-gate {
   display: flex;
   flex-direction: column;
   text-align: left;
-  border: 2px solid var(--ink);
+  border: 0;
+  border-radius: 14px;
   background: var(--panel);
-  box-shadow: 6px 6px 0 var(--shadow);
+  box-shadow: 0 8px 20px rgba(42, 40, 36, 0.14), 0 2px 5px rgba(42, 40, 36, 0.1);
   cursor: pointer;
   font-family: inherit;
   color: inherit;
   overflow: hidden;
   min-height: 0;
+  appearance: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
 .game-card:hover {
   transform: translate(-3px, -3px);
-  box-shadow: 9px 9px 0 var(--shadow);
+  box-shadow: 0 14px 28px rgba(42, 40, 36, 0.18), 0 4px 8px rgba(42, 40, 36, 0.12);
   background: #fff;
 }
 
 .game-card:active {
   transform: translate(1px, 1px);
-  box-shadow: 3px 3px 0 var(--shadow);
+  box-shadow: 0 4px 10px rgba(42, 40, 36, 0.14);
+}
+
+.game-card:focus-visible {
+  outline: 3px solid rgba(196, 92, 38, 0.55);
+  outline-offset: 3px;
 }
 
 .card-preview {
   height: 92px;
-  border-bottom: 2px solid var(--ink);
+  border-bottom: 1px solid rgba(26, 26, 26, 0.12);
   background: var(--paper-deep);
   position: relative;
   flex-shrink: 0;
