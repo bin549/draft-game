@@ -1,4 +1,5 @@
 const SHEET_SRC = "assets/kartgame/9ac5859b-9912-4ff0-af18-3973363e8aed.png";
+const CLASSIC_SHEET_SRC = "assets/cargame/Gemini_Generated_Image_yrdex0yrdex0yrde.jpg";
 
 const LAPS = 3;
 const HALF_W = 1400;
@@ -64,6 +65,7 @@ const cleanups = [];
 
 let assets = null;
 let assetsP = null;
+let assetsClassicP = null;
 let track = null;
 let boxes = [];
 let decor = [];
@@ -288,6 +290,47 @@ async function loadAssets() {
   return assets;
 }
 
+function cutClassicFrame(img, box) {
+  const c = document.createElement("canvas");
+  c.width = box.w;
+  c.height = box.h;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.drawImage(img, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+  const im = g.getImageData(0, 0, c.width, c.height);
+  const d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const max = Math.max(d[i], d[i + 1], d[i + 2]);
+    const min = Math.min(d[i], d[i + 1], d[i + 2]);
+    const neutral = max - min < 24;
+    if (neutral && max > 112) d[i + 3] = 0;
+  }
+  g.putImageData(im, 0, 0);
+  return { canvas: c, x: 0, w: c.width, h: c.height };
+}
+
+async function loadClassicAssets() {
+  const img = await loadImage(CLASSIC_SHEET_SRC);
+  const mikoFrame = cutClassicFrame(img, { x: 23, y: 425, w: 133, h: 198 });
+  const bunFrame = cutClassicFrame(img, { x: 23, y: 24, w: 133, h: 190 });
+  const makeSkin = (frame) => ({
+    idle: [frame], drive: [frame], turnL: [frame], turnR: [frame],
+    driftL: [frame], driftR: [frame], boostL: [frame], boostR: [frame], item: [frame],
+  });
+  assets.classicSkins = { miko: makeSkin(mikoFrame), bun: makeSkin(bunFrame) };
+  return assets.classicSkins;
+}
+
+function ensureClassicAssets() {
+  if (assets?.classicSkins) return Promise.resolve(assets.classicSkins);
+  if (!assetsClassicP) {
+    assetsClassicP = loadClassicAssets().catch((err) => {
+      assetsClassicP = null;
+      throw err;
+    });
+  }
+  return assetsClassicP;
+}
+
 function ensureAssets() {
   if (assets) return Promise.resolve(assets);
   if (!assetsP) {
@@ -429,12 +472,13 @@ function project(x, y) {
 
 function makeRacer(opts, slot) {
   const place = pointAt(150 - slot.back, slot.lat);
+  const skinSet = classicMode ? assets.classicSkins : assets.skins;
   return {
     name: opts.name,
     human: opts.human,
     cpu: !opts.human,
     pad: opts.pad,
-    skin: assets.skins[opts.skin],
+    skin: skinSet[opts.skin],
     x: place.x,
     y: place.y,
     heading: place.heading,
@@ -636,7 +680,7 @@ function framesOf(kart) {
   if (kart.anim === "driftR") return s.driftR?.length ? s.driftR : s.driftL?.length ? s.driftL : s.drive;
   if (kart.anim === "boostL") return s.boostL?.length ? s.boostL : s.drive;
   if (kart.anim === "boostR") return s.boostR?.length ? s.boostR : s.boostL?.length ? s.boostL : s.drive;
-  if (kart.anim === "item") return s.item?.length ? s.item : s.idle;
+  if (kart.anim === "item") return s.drive?.length ? s.drive : s.idle;
   if (kart.anim === "idle") return s.idle?.length ? s.idle : s.drive;
   return s.drive?.length ? s.drive : s.idle;
 }
@@ -1012,7 +1056,8 @@ function syncRoleSelect() {
     cards.forEach((card) => {
       const player = Number(card.dataset.kartPlayer);
       const skin = selectedSkins[player];
-      const frame = assets?.skins?.[skin]?.idle?.[0];
+      const skinSet = classicMode ? assets?.classicSkins : assets?.skins;
+      const frame = skinSet?.[skin]?.idle?.[0];
       const portrait = card.querySelector("[data-kart-portrait]");
       if (portrait && frame && !portrait.querySelector("canvas")) {
         const canvas = document.createElement("canvas");
@@ -1056,16 +1101,21 @@ function renderRoleOptions() {
   const root = els.roleSelect;
   if (!root || !assets) return;
   root.querySelectorAll("[data-kart-skin]").forEach((button) => {
-    const skin = assets.skins[button.dataset.kartSkin];
+    const skinSet = classicMode ? assets.classicSkins : assets.skins;
+    const skin = skinSet[button.dataset.kartSkin];
     const frame = skin?.idle?.[0];
-    if (!frame || button.querySelector("canvas")) return;
-    const thumb = document.createElement("canvas");
-    thumb.width = 64;
-    thumb.height = 46;
-    thumb.className = "kart-role-thumb";
+    if (!frame) return;
+    let thumb = button.querySelector("canvas");
+    if (!thumb) {
+      thumb = document.createElement("canvas");
+      thumb.width = 64;
+      thumb.height = 46;
+      thumb.className = "kart-role-thumb";
+      button.prepend(thumb);
+    }
     const tctx = thumb.getContext("2d");
+    tctx.clearRect(0, 0, thumb.width, thumb.height);
     tctx.drawImage(frame.canvas, 5, 2, 54, 40);
-    button.prepend(thumb);
   });
 }
 
@@ -1266,7 +1316,7 @@ function drawWorld() {
   for (const kart of drawList) {
     const frs = framesOf(kart);
     const fr = frs && frs.length ? frs[Math.floor(kart.frame) % frs.length] : null;
-    const scale = (kart.slowT > 0 ? 1.05 : 1.48) * (kart.finished ? 0.95 : 1);
+    const scale = (classicMode ? 0.44 : (kart.slowT > 0 ? 1.05 : 1.48)) * (kart.finished ? 0.95 : 1);
     ctx.save();
     ctx.translate(kart.x, kart.y);
     ctx.fillStyle = "rgba(26,26,26,0.18)";
@@ -1280,7 +1330,7 @@ function drawWorld() {
       ctx.arc(0, -8, 30, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.rotate(kart.heading + kart.slip * 0.35);
+    ctx.rotate(kart.heading + (classicMode ? Math.PI : 0) + kart.slip * 0.35);
     if (fr) {
       const dw = fr.w * scale;
       const dh = fr.h * scale;
@@ -2078,6 +2128,7 @@ async function startKartInternal({ canvas: c, els: e, use3d }) {
   held.clear();
   resize();
   await ensureAssets();
+  if (!use3d) await ensureClassicAssets();
   renderRoleOptions();
   buildTrack();
   on(window, "resize", resize);

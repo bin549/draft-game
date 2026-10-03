@@ -11,7 +11,7 @@ import { startDoom, stopDoom } from "./doom.js?v=20260930spriteperf";
 import { startMatch3, stopMatch3 } from "./match3.js?v=20261001b";
 import { startSling, stopSling } from "./sling.js?v=20261001static";
 import { startArcade, stopArcade } from "./arcade.js?v=20261002ladybunny2";
-import { startKart, startKartClassic, stopKart } from "./kart.js?v=20261003kartstylefix";
+import { startKart, startKartClassic, stopKart } from "./kart.js?v=20261003kartitemanim";
 import { startFall, stopFall } from "./fall.js?v=20261002fall1";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
@@ -1242,38 +1242,85 @@ function drawMenuPreviews() {
   setupPreviewCanvas("preview-kart", (ctx, w, h) => {
     const sky = ctx.createLinearGradient(0, 0, 0, h);
     sky.addColorStop(0, "#d8e4ec");
-    sky.addColorStop(0.55, "#e8e4d8");
-    sky.addColorStop(1, "#d4cbb8");
+    sky.addColorStop(0.58, "#e8e4d8");
+    sky.addColorStop(0.59, "#8fbd79");
+    sky.addColorStop(1, "#5b9a59");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#e4ddd0";
-    ctx.fillRect(12, 18, w - 24, h - 30);
-    ctx.strokeStyle = "#1a1a1a";
-    ctx.lineWidth = 1.4;
-    ctx.strokeRect(12.5, 18.5, w - 24, h - 30);
-    ctx.strokeStyle = "#c45c26";
-    ctx.lineWidth = 7;
-    ctx.strokeRect(25, 30, w - 50, h - 52);
-    ctx.strokeStyle = "#6e6a63";
-    ctx.lineWidth = 4;
-    ctx.strokeRect(31, 36, w - 62, h - 64);
-    ctx.setLineDash([7, 6]);
-    ctx.strokeStyle = "rgba(244,241,234,0.72)";
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(36, 41, w - 72, h - 74);
+    const horizon = h * 0.57;
+    ctx.fillStyle = "#6eaa65";
+    ctx.fillRect(0, horizon, w, h - horizon);
+    const road = (topW, bottomW, yTop, yBottom, color, inset = 0) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(w / 2 - topW / 2 + inset, yTop);
+      ctx.lineTo(w / 2 + topW / 2 - inset, yTop);
+      ctx.lineTo(w / 2 + bottomW / 2 - inset, yBottom);
+      ctx.lineTo(w / 2 - bottomW / 2 + inset, yBottom);
+      ctx.closePath();
+      ctx.fill();
+    };
+    road(w * 0.13, w * 0.8, horizon, h * 1.12, "#c45c26");
+    road(w * 0.115, w * 0.765, horizon, h * 1.12, "#55585a");
+    road(w * 0.075, w * 0.52, horizon, h * 1.12, "#6e6a63");
+    ctx.strokeStyle = "rgba(242,239,230,0.9)";
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([7, 7]);
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, horizon + 4);
+    ctx.lineTo(w * 0.5, h * 1.08);
+    ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "#3a6ea5";
+
+    // Low-detail roadside trees establish a driver's eye-level view.
+    for (const [x, y, size] of [[0.13, 0.52, 1], [0.82, 0.5, 0.82], [0.28, 0.55, 0.58], [0.7, 0.55, 0.52]]) {
+      const s = h * 0.34 * size;
+      ctx.fillStyle = "#6a432e";
+      ctx.fillRect(w * x - s * 0.06, y * h - s * 0.24, s * 0.12, s * 0.34);
+      ctx.fillStyle = "#397a48";
+      ctx.beginPath();
+      ctx.arc(w * x, y * h - s * 0.34, s * 0.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const rival = (x, y, scale, color) => {
+      const rw = 21 * scale;
+      const rh = 27 * scale;
+      ctx.fillStyle = "rgba(26,26,26,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(x, y + rh * 0.36, rw * 0.8, rh * 0.22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#25282a";
+      ctx.fillRect(x - rw * 0.62, y - rh * 0.08, rw * 0.28, rh * 0.78);
+      ctx.fillRect(x + rw * 0.34, y - rh * 0.08, rw * 0.28, rh * 0.78);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, y - rh * 0.55);
+      ctx.quadraticCurveTo(x + rw * 0.62, y - rh * 0.3, x + rw * 0.42, y + rh * 0.52);
+      ctx.lineTo(x - rw * 0.42, y + rh * 0.52);
+      ctx.quadraticCurveTo(x - rw * 0.62, y - rh * 0.3, x, y - rh * 0.55);
+      ctx.fill();
+    };
+    rival(w * 0.55, h * 0.67, 0.5, "#3a6ea5");
+    rival(w * 0.43, h * 0.73, 0.72, "#c45c26");
+
+    // A small hood edge anchors the preview inside the player's kart.
+    ctx.fillStyle = "#263b4b";
     ctx.beginPath();
-    ctx.arc(w * 0.42, h * 0.7, 7, 0, Math.PI * 2);
+    ctx.moveTo(w * 0.31, h);
+    ctx.quadraticCurveTo(w * 0.5, h * 0.78, w * 0.69, h);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#d64545";
+    ctx.strokeStyle = "#c45c26";
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(w * 0.62, h * 0.36, 6, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(w * 0.37, h * 0.95);
+    ctx.quadraticCurveTo(w * 0.5, h * 0.83, w * 0.63, h * 0.95);
+    ctx.stroke();
     ctx.fillStyle = "#1a1a1a";
     ctx.font = "bold 12px Songti SC, serif";
     ctx.textAlign = "center";
-    ctx.fillText("赛车", w * 0.5, h * 0.2);
+    ctx.fillText("驾驶视角", w * 0.5, h * 0.2);
   });
 
   setupPreviewCanvas("preview-kart-classic", (ctx, w, h) => {
