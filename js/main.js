@@ -10,7 +10,9 @@ import { startDressup, stopDressup } from "./dressup.js?v=20260929j";
 import { startDoom, stopDoom } from "./doom.js?v=20260930spriteperf";
 import { startMatch3, stopMatch3 } from "./match3.js?v=20261001b";
 import { startSling, stopSling } from "./sling.js?v=20261001static";
-import { startArcade, stopArcade } from "./arcade.js?v=20261001restart";
+import { startArcade, stopArcade } from "./arcade.js?v=20261002ladybunny2";
+import { startKart, startKartClassic, stopKart } from "./kart.js?v=20261003kartstylefix";
+import { startFall, stopFall } from "./fall.js?v=20261002fall1";
 import { drawNineTailFox, drawEyeball, drawHouse, drawSprout, drawTornado } from "./draw.js";
 import { drawCharacter } from "./characters.js?v=20260927e";
 import { loadMonsters, getMonsterSprite } from "./monsters.js";
@@ -20,7 +22,11 @@ const stage = document.getElementById("stage");
 const canvas = document.getElementById("game");
 const loadingScreen = document.getElementById("loading-screen");
 
-const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup", "doom", "match3", "sling", "arcade"];
+// Keep the new 3D kart mode as the final menu entry while preserving the classic racer.
+const kart3dCard = document.querySelector('[data-mode="kart"]');
+if (kart3dCard) document.getElementById("game-grid")?.appendChild(kart3dCard);
+
+const MODE_IDS = ["survivor", "platform", "tower", "rhythm", "paddle", "icefire", "towerfall", "thief", "dressup", "doom", "match3", "sling", "arcade", "kart", "kart-classic", "fall"];
 
 let activeMode = null;
 
@@ -56,6 +62,8 @@ function hideAllModeUi() {
   document.getElementById("btn-join-2p")?.classList.add("hidden");
   document.getElementById("tower-dock")?.classList.add("hidden");
   document.getElementById("survivor-magic-dock")?.classList.add("hidden");
+  document.getElementById("kart-countdown")?.classList.add("hidden");
+  document.getElementById("kart-lap-notice")?.classList.add("hidden");
 }
 
 function showMenu() {
@@ -80,6 +88,9 @@ function stopActive() {
   if (activeMode === "match3") stopMatch3();
   if (activeMode === "sling") stopSling();
   if (activeMode === "arcade") stopArcade();
+  if (activeMode === "kart") stopKart();
+  if (activeMode === "kart-classic") stopKart();
+  if (activeMode === "fall") stopFall();
   activeMode = null;
 }
 
@@ -88,7 +99,7 @@ async function enterMode(mode) {
   stopActive();
   hideAllModeUi();
 
-  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom", "paddle", "match3", "sling", "arcade"].includes(mode);
+  const needsLoad = ["dressup", "thief", "icefire", "towerfall", "doom", "paddle", "match3", "sling", "arcade", "kart", "kart-classic", "fall"].includes(mode);
   // 先盖住菜单再拉资源；舞台等 start 完成后再露，避免空白渐变
   if (needsLoad) {
     showLoading("正在加载中…");
@@ -367,6 +378,72 @@ async function enterMode(mode) {
         btnVersusPvp: document.getElementById("btn-versus-pvp"),
         btnVersusCpu: document.getElementById("btn-versus-cpu"),
         btnVersusCoop: document.getElementById("btn-versus-coop"),
+      },
+    });
+  } else if (mode === "kart") {
+    await startKart({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-kart"),
+        overlay: document.getElementById("overlay-kart"),
+        gameover: document.getElementById("gameover-kart"),
+        endTitle: document.getElementById("kart-end-title"),
+        resultText: document.getElementById("kart-result-text"),
+        rankText: document.getElementById("kart-rank-text"),
+        lapText: document.getElementById("kart-lap-text"),
+        speedText: document.getElementById("kart-speed-text"),
+        itemText: document.getElementById("kart-item-text"),
+        itemIcon: document.getElementById("kart-item-icon"),
+        itemIconP2: document.getElementById("kart-item-icon-p2"),
+        overlaySub: document.getElementById("kart-overlay-sub"),
+        btnStart: document.getElementById("btn-start-kart"),
+        btnRestart: document.getElementById("btn-restart-kart"),
+        btnJoin: document.getElementById("btn-join-kart"),
+        roleSelect: document.getElementById("kart-role-select"),
+        countdown: document.getElementById("kart-countdown"),
+        lapNotice: document.getElementById("kart-lap-notice"),
+      },
+    });
+  } else if (mode === "kart-classic") {
+    await startKartClassic({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-kart"),
+        overlay: document.getElementById("overlay-kart-classic"),
+        gameover: document.getElementById("gameover-kart-classic"),
+        endTitle: document.getElementById("kart-classic-end-title"),
+        resultText: document.getElementById("kart-classic-result-text"),
+        rankText: document.getElementById("kart-rank-text"),
+        lapText: document.getElementById("kart-lap-text"),
+        speedText: document.getElementById("kart-speed-text"),
+        itemText: document.getElementById("kart-item-text"),
+        itemIcon: document.getElementById("kart-item-icon"),
+        itemIconP2: document.getElementById("kart-item-icon-p2"),
+        overlaySub: document.getElementById("kart-classic-overlay-sub"),
+        btnStart: document.getElementById("btn-start-kart-classic"),
+        btnRestart: document.getElementById("btn-restart-kart-classic"),
+        btnJoin: document.getElementById("btn-join-kart-classic"),
+        roleSelect: document.getElementById("kart-classic-role-select"),
+        countdown: document.getElementById("kart-countdown"),
+        lapNotice: document.getElementById("kart-lap-notice"),
+      },
+    });
+  } else if (mode === "fall") {
+    await startFall({
+      canvas,
+      els: {
+        hud: document.getElementById("hud-fall"),
+        overlay: document.getElementById("overlay-fall"),
+        gameover: document.getElementById("gameover-fall"),
+        endTitle: document.getElementById("fall-end-title"),
+        resultText: document.getElementById("fall-result-text"),
+        floorText: document.getElementById("fall-floor-text"),
+        lifeText: document.getElementById("fall-life-text"),
+        rivalText: document.getElementById("fall-rival-text"),
+        overlaySub: document.getElementById("fall-overlay-sub"),
+        btnStart: document.getElementById("btn-start-fall"),
+        btnRestart: document.getElementById("btn-restart-fall"),
+        btnJoin: document.getElementById("btn-join-fall"),
       },
     });
   }
@@ -1133,7 +1210,7 @@ function drawMenuPreviews() {
     sky.addColorStop(1, "#d4cbb8");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#7fbf63";
+    ctx.fillStyle = "#e4ddd0";
     ctx.fillRect(12, 18, w - 24, h - 30);
     ctx.strokeStyle = "#1a1a1a";
     ctx.lineWidth = 1.4;
@@ -1160,6 +1237,113 @@ function drawMenuPreviews() {
     ctx.font = "bold 12px Songti SC, serif";
     ctx.textAlign = "center";
     ctx.fillText("炸弹", w * 0.5, h * 0.16);
+  });
+
+  setupPreviewCanvas("preview-kart", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#e4ddd0";
+    ctx.fillRect(12, 18, w - 24, h - 30);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(12.5, 18.5, w - 24, h - 30);
+    ctx.strokeStyle = "#c45c26";
+    ctx.lineWidth = 7;
+    ctx.strokeRect(25, 30, w - 50, h - 52);
+    ctx.strokeStyle = "#6e6a63";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(31, 36, w - 62, h - 64);
+    ctx.setLineDash([7, 6]);
+    ctx.strokeStyle = "rgba(244,241,234,0.72)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(36, 41, w - 72, h - 74);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#3a6ea5";
+    ctx.beginPath();
+    ctx.arc(w * 0.42, h * 0.7, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d64545";
+    ctx.beginPath();
+    ctx.arc(w * 0.62, h * 0.36, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("赛车", w * 0.5, h * 0.2);
+  });
+
+  setupPreviewCanvas("preview-kart-classic", (ctx, w, h) => {
+    const sky = ctx.createLinearGradient(0, 0, 0, h);
+    sky.addColorStop(0, "#d8e4ec");
+    sky.addColorStop(0.55, "#e8e4d8");
+    sky.addColorStop(1, "#d4cbb8");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#e4ddd0";
+    ctx.fillRect(12, 18, w - 24, h - 30);
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(12.5, 18.5, w - 24, h - 30);
+    ctx.strokeStyle = "#c45c26";
+    ctx.lineWidth = 7;
+    ctx.strokeRect(25, 30, w - 50, h - 52);
+    ctx.strokeStyle = "#56595b";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(31, 36, w - 62, h - 64);
+    ctx.setLineDash([12, 8]);
+    ctx.strokeStyle = "rgba(244,241,234,0.8)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(36, 41, w - 72, h - 74);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#3a6ea5";
+    ctx.beginPath();
+    ctx.arc(w * 0.46, h * 0.72, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d64545";
+    ctx.beginPath();
+    ctx.arc(w * 0.57, h * 0.31, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("俯视赛车", w * 0.5, h * 0.16);
+  });
+
+  setupPreviewCanvas("preview-fall", (ctx, w, h) => {
+    ctx.fillStyle = "#d8e4ec";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#c46a52";
+    ctx.fillRect(w * 0.18, 14, 10, h - 22);
+    ctx.fillRect(w * 0.78, 14, 10, h - 22);
+    ctx.fillStyle = "#efe4cf";
+    ctx.fillRect(w * 0.18 + 10, 14, w * 0.6 - 10, h - 22);
+    ctx.fillStyle = "#c9a56e";
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 1.4;
+    ctx.fillRect(w * 0.22, h * 0.34, w * 0.22, 8);
+    ctx.strokeRect(w * 0.22, h * 0.34, w * 0.22, 8);
+    ctx.fillRect(w * 0.56, h * 0.34, w * 0.2, 8);
+    ctx.strokeRect(w * 0.56, h * 0.34, w * 0.2, 8);
+    ctx.fillRect(w * 0.28, h * 0.62, w * 0.42, 8);
+    ctx.strokeRect(w * 0.28, h * 0.62, w * 0.42, 8);
+    ctx.fillStyle = "#e8b090";
+    ctx.beginPath();
+    ctx.arc(w * 0.34, h * 0.28, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#f4f1ea";
+    ctx.beginPath();
+    ctx.arc(w * 0.64, h * 0.52, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "bold 12px Songti SC, serif";
+    ctx.textAlign = "center";
+    ctx.fillText("下一百层", w * 0.5, h * 0.16);
   });
 }
 

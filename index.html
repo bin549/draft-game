@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>火柴人爱运动</title>
-  <link rel="stylesheet" href="css/style.css?v=20261001versus1" />
+  <link rel="stylesheet" href="css/style.css?v=20261002fall1" />
   <style>@keyframes loading-spin{to{transform:rotate(360deg)}}</style>
   <script>
     (function () {
@@ -187,6 +187,39 @@
             <h2>炸弹模式</h2>
             <p>后花园迷宫 · 放泡清怪 · 第三关仕女 Boss</p>
             <p class="controls">P1：WASD + J放泡 · P2：方向键 + Shift放泡</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="kart" type="button">
+          <div class="card-preview" id="preview-kart">
+            <span class="preview-badge coop">可双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">17</span><span class="tag-row"><span class="tag kart">赛车</span></span></div>
+            <h2>卡丁车模式</h2>
+            <p>第三人称 3D 环岛 · 漂移集气 · 问号箱道具</p>
+            <p class="controls">P1：WASD + J道具 · P2：方向键 + Shift道具</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="kart-classic" type="button">
+          <div class="card-preview" id="preview-kart-classic">
+            <span class="preview-badge coop">可双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">15</span><span class="tag kart">赛车</span></div>
+            <h2>赛车模式</h2>
+            <p>原版俯视角环岛 · 漂移集气 · 问号箱道具</p>
+            <p class="controls">P1：WASD + J道具 · P2：方向键 + Shift道具</p>
+          </div>
+        </button>
+        <button class="game-card" data-mode="fall" type="button">
+          <div class="card-preview" id="preview-fall">
+            <span class="preview-badge coop">可双人</span>
+          </div>
+          <div class="card-body">
+            <div class="card-meta"><span class="mode-num">16</span><span class="tag-row"><span class="tag fall">下落</span><span class="tag wip">开发中</span></span></div>
+            <h2>下一百层</h2>
+            <p>缺口楼板 · 尖刺弹簧 · 下到第一百层</p>
+            <p class="controls">P1：A / D · P2：← / →</p>
           </div>
         </button>
       </div>
@@ -388,6 +421,40 @@
       <div class="stat time">
         <span id="arcade-mob-text">怪物 0</span>
         <span id="arcade-stage-text">关卡 1/3</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="hud-kart" class="hud hidden">
+      <div class="stat">
+        <span class="label">名次</span>
+        <span id="kart-rank-text">1/4</span>
+      </div>
+      <div class="stat">
+        <span class="label">圈数</span>
+        <span id="kart-lap-text">1/3</span>
+      </div>
+      <div class="stat time">
+        <span class="kart-item-hud"><canvas id="kart-item-icon" width="42" height="42" aria-hidden="true"></canvas><canvas id="kart-item-icon-p2" width="42" height="42" aria-hidden="true"></canvas><span id="kart-item-text">道具 无</span></span>
+        <span id="kart-speed-text">速度 0</span>
+      </div>
+      <button type="button" class="btn-back" data-back>返回菜单</button>
+    </div>
+
+    <div id="kart-countdown" class="kart-countdown hidden" aria-live="assertive"></div>
+    <div id="kart-lap-notice" class="kart-lap-notice hidden" aria-live="polite"></div>
+
+    <div id="hud-fall" class="hud hidden">
+      <div class="stat">
+        <span class="label">层数</span>
+        <span id="fall-floor-text">0/100</span>
+      </div>
+      <div class="stat">
+        <span class="label">生命</span>
+        <span id="fall-life-text">5</span>
+      </div>
+      <div class="stat time">
+        <span id="fall-rival-text">白帽 0/100</span>
       </div>
       <button type="button" class="btn-back" data-back>返回菜单</button>
     </div>
@@ -690,6 +757,104 @@
       </div>
     </div>
 
+    <div id="overlay-kart" class="overlay hidden">
+      <div class="panel kart-select-panel">
+        <h2>卡丁车模式</h2>
+        <div class="kart-duel-select" id="kart-role-select">
+          <div class="kart-select-card p1" data-kart-player="0">
+            <strong class="kart-select-player">P1</strong>
+            <div class="kart-select-portrait" data-kart-portrait="0"></div>
+            <h3 data-kart-name="0">巫女</h3>
+            <button type="button" class="kart-select-arrow" data-kart-action="up" aria-label="P1 上一个角色">▲</button>
+            <span class="kart-select-status" data-kart-status="0">上下切换</span>
+            <button type="button" class="kart-select-arrow" data-kart-action="down" aria-label="P1 下一个角色">▼</button>
+            <button type="button" class="btn-ghost kart-select-confirm" data-kart-action="confirm">空格确认</button>
+            <p>P1 · WASD / 空格确认</p>
+          </div>
+          <div class="kart-select-card p2 disabled" data-kart-player="1">
+            <strong class="kart-select-player">P2</strong>
+            <div class="kart-select-portrait" data-kart-portrait="1"></div>
+            <h3 data-kart-name="1">蓝色怪物</h3>
+            <button type="button" class="kart-select-arrow" data-kart-action="up" aria-label="P2 上一个角色">▲</button>
+            <span class="kart-select-status" data-kart-status="1">加入 2P 后选择</span>
+            <button type="button" class="kart-select-arrow" data-kart-action="down" aria-label="P2 下一个角色">▼</button>
+            <button type="button" class="btn-ghost kart-select-confirm" data-kart-action="confirm">Shift 确认</button>
+            <p>P2 · 方向键 / Shift确认</p>
+          </div>
+        </div>
+        <p class="sub" id="kart-overlay-sub">你驾驶巫女，对阵三台蓝怪。三圈，问号箱里有道具。</p>
+        <p class="sub">按住 S 并转向可漂移，松刹车喷气。开过问号箱后按 J 使用道具。</p>
+        <div class="btn-row" style="justify-content:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.85rem">
+          <button id="btn-join-kart" type="button" class="btn-ghost">加入 2P</button>
+          <button id="btn-start-kart" type="button">开始比赛</button>
+        </div>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-kart" class="overlay hidden">
+      <div class="panel">
+        <h2 id="kart-end-title">比赛结束</h2>
+        <p id="kart-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-kart" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay-kart-classic" class="overlay hidden">
+      <div class="panel" style="max-width:28rem">
+        <h2>赛车模式</h2>
+        <div class="kart-role-select" id="kart-classic-role-select">
+          <div class="kart-role-row" data-kart-player="0"><strong>P1</strong><button type="button" class="btn-ghost active" data-kart-skin="miko">巫女</button><button type="button" class="btn-ghost" data-kart-skin="bun">蓝色怪物</button></div>
+          <div class="kart-role-row hidden" data-kart-player="1"><strong>P2</strong><button type="button" class="btn-ghost" data-kart-skin="miko">巫女</button><button type="button" class="btn-ghost active" data-kart-skin="bun">蓝色怪物</button></div>
+        </div>
+        <p class="sub" id="kart-classic-overlay-sub">原版俯视角赛车。三圈，问号箱里有道具。</p>
+        <p class="sub">按住 S 并转向可漂移，松刹车喷气。开过问号箱后按 J 使用道具。</p>
+        <div class="btn-row" style="justify-content:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.85rem">
+          <button id="btn-join-kart-classic" type="button" class="btn-ghost">加入 2P</button>
+          <button id="btn-start-kart-classic" type="button">开始比赛</button>
+        </div>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-kart-classic" class="overlay hidden">
+      <div class="panel">
+        <h2 id="kart-classic-end-title">比赛结束</h2>
+        <p id="kart-classic-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-kart-classic" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay-fall" class="overlay hidden">
+      <div class="panel" style="max-width:28rem">
+        <h2>下一百层</h2>
+        <p class="sub" id="fall-overlay-sub">你是麻袋小偷，白帽在后面追。左右走到缺口就会下落。</p>
+        <p class="sub">尖刺会把你弹回两层并扣生命。弹簧把你弹上去。碎板站久了会塌。先到第一百层的人获胜。</p>
+        <div class="btn-row" style="justify-content:center;gap:0.75rem;flex-wrap:wrap;margin-top:0.85rem">
+          <button id="btn-join-fall" type="button" class="btn-ghost">加入 2P</button>
+          <button id="btn-start-fall" type="button">开始下落</button>
+        </div>
+        <button type="button" class="btn-ghost" data-back style="margin-top:1rem">返回菜单</button>
+      </div>
+    </div>
+
+    <div id="gameover-fall" class="overlay hidden">
+      <div class="panel">
+        <h2 id="fall-end-title">到底了</h2>
+        <p id="fall-result-text"></p>
+        <div class="btn-row">
+          <button id="btn-restart-fall" type="button">再来一局</button>
+          <button type="button" class="btn-ghost" data-back>返回菜单</button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- 底部卡片栏（独立于舞台，避免被 canvas 遮挡） -->
@@ -739,6 +904,6 @@
     </button>
   </div>
 
-  <script type="module" src="js/main.js?v=20261001restart"></script>
+  <script type="module" src="js/main.js?v=20261003kartstylefix"></script>
 </body>
 </html>

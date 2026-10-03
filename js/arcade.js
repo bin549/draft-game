@@ -8,6 +8,7 @@
 const CHAR_SRC = "assets/crazyarcade/0e6d417a-3793-40a2-b736-4393d022f2ce.png";
 const MOB_SRC = "assets/crazyarcade/97612300-601f-4769-b9cb-03267eeda359.png";
 const BOSS_SRC = "assets/crazyarcade/ghost_lady.png";
+const LADY_BUNNY_SRC = "assets/player/ed9a25d8-b852-4e01-94d3-24c4c4ca25ab.png";
 
 const COLS = 15;
 const ROWS = 13;
@@ -193,7 +194,70 @@ function ensureAlphaSheet(img) {
   pg.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1);
   const px = pg.getImageData(0, 0, 1, 1).data;
   const looksOpaqueBg = px[3] > 200 && Math.abs(px[0] - px[1]) < 20 && px[0] > 170;
-  return looksOpaqueBg ? knockoutChecker(img) : img;
+  if (looksOpaqueBg) return knockoutChecker(img);
+  const looksBlackBg = px[3] > 200 && px[0] < 24 && px[1] < 24 && px[2] < 24;
+  return looksBlackBg ? knockoutDarkBg(img) : img;
+}
+
+/** 黑底精灵表：边缘洪水抠黑，紧贴描边的黑像素保留 */
+function knockoutDarkBg(img) {
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const g = c.getContext("2d");
+  g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, w, h);
+  const d = data.data;
+  const isDark = (i) => d[i + 3] > 20 && d[i] < 22 && d[i + 1] < 22 && d[i + 2] < 22;
+  const brightNear = (x, y) => {
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const i = (ny * w + nx) * 4;
+        if (d[i + 3] > 20 && Math.max(d[i], d[i + 1], d[i + 2]) > 40) return true;
+      }
+    }
+    return false;
+  };
+  const safeBg = (x, y) => {
+    const i = (y * w + x) * 4;
+    if (!isDark(i)) return false;
+    return !brightNear(x, y);
+  };
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  const push = (x, y) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const p = y * w + x;
+    if (seen[p] || !safeBg(x, y)) return;
+    seen[p] = 1;
+    stack.push(p);
+  };
+  for (let x = 0; x < w; x++) {
+    push(x, 0);
+    push(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    push(0, y);
+    push(w - 1, y);
+  }
+  while (stack.length) {
+    const p = stack.pop();
+    d[p * 4 + 3] = 0;
+    const x = p % w;
+    const y = (p / w) | 0;
+    push(x + 1, y);
+    push(x - 1, y);
+    push(x, y + 1);
+    push(x, y - 1);
+  }
+  g.putImageData(data, 0, 0);
+  return c;
 }
 
 /**
@@ -221,6 +285,18 @@ const MOB_FRAME_BOXES = [
   [[112,679,87,130],[202,678,83,131],[285,678,88,131],[377,678,88,131],[487,694,86,119],[573,692,86,121],[661,692,82,121],[749,692,84,121],[869,689,88,121],[968,685,76,124],[1052,688,68,122],[1126,691,66,120],[1218,696,76,116],[1325,696,81,117],[1421,693,77,118],[1421,693,77,118]],
   // mob2 walk
   [[113,841,88,128],[203,841,83,129],[287,841,88,129],[376,841,86,129],[482,852,89,119],[573,850,86,122],[660,852,82,120],[749,851,84,121],[864,848,86,123],[963,848,76,123],[1045,850,79,121],[1123,851,71,120],[1219,854,75,119],[1319,859,77,115],[1419,853,78,121],[1419,853,78,121]],
+];
+
+/** 仕女 + 蓝兔：黑底表，idle/walk × 下上左右 */
+const LADY_BUNNY_FRAME_BOXES = [
+  // lady idle
+  [[116,160,81,141],[200,160,80,141],[282,160,79,141],[364,160,80,140],[510,161,70,135],[586,162,69,134],[664,163,72,136],[746,164,72,134],[875,165,69,130],[961,165,69,131],[1046,166,69,129],[1129,166,69,131],[1234,165,71,131],[1321,165,72,131],[1422,165,75,131],[1422,165,75,131]],
+  // lady walk
+  [[116,347,80,133],[200,348,78,132],[282,348,78,131],[364,347,79,133],[510,347,71,128],[587,347,70,128],[667,349,71,129],[746,348,73,128],[872,341,69,132],[959,341,71,131],[1049,341,70,131],[1133,341,70,134],[1236,341,71,133],[1327,341,72,132],[1424,341,72,134],[1424,341,72,134]],
+  // bunny idle
+  [[110,650,82,124],[197,651,79,121],[280,652,80,120],[365,653,78,121],[487,657,74,116],[572,656,72,117],[657,658,74,116],[747,658,74,116],[871,655,72,120],[956,656,72,119],[1044,656,74,118],[1131,658,75,117],[1244,660,72,114],[1334,661,73,113],[1427,661,76,113],[1427,661,76,113]],
+  // bunny walk
+  [[110,819,82,127],[198,819,78,128],[282,819,79,124],[364,820,81,126],[486,829,75,116],[571,829,72,116],[655,830,75,116],[746,831,75,115],[868,829,72,118],[954,830,74,117],[1044,831,74,116],[1133,831,74,116],[1243,830,74,117],[1334,829,77,118],[1426,829,78,118],[1426,829,78,118]],
 ];
 
 /** 按预扫描的精确框裁切（不再靠运行时启发式猜帧） */
@@ -274,18 +350,22 @@ function normalizePack(pack) {
 
 async function ensureAssets() {
   if (assets) return assets;
-  const [charImg, mobImg, bossImg] = await Promise.all([
+  const [charImg, mobImg, bossImg, ladyBunnyImg] = await Promise.all([
     loadImage(CHAR_SRC),
     loadImage(MOB_SRC),
     loadImage(BOSS_SRC),
+    loadImage(LADY_BUNNY_SRC),
   ]);
   const charRows = sliceSheetFromBoxes(charImg, CHAR_FRAME_BOXES);
   const mobRows = sliceSheetFromBoxes(mobImg, MOB_FRAME_BOXES);
+  const lbRows = sliceSheetFromBoxes(ladyBunnyImg, LADY_BUNNY_FRAME_BOXES);
   assets = {
     blue: packActor(charRows.slice(0, 2)),
     red: packActor(charRows.slice(2, 4)),
     eyeball: packActor(mobRows.slice(0, 2)),
     fox: packActor(mobRows.slice(2, 4)),
+    lady: packActor(lbRows.slice(0, 2)),
+    bunny: packActor(lbRows.slice(2, 4)),
     boss: cropOpaque(bossImg, 0, 0, bossImg.width, bossImg.height),
   };
   return assets;
@@ -377,6 +457,7 @@ function parseMap(rows, extras = {}) {
       if (ch === "2") spawns[1] = { c, r };
       if (ch === "e") monsters.push(makeMob("eyeball", c, r, extras.eyeHp || 1, extras.eyeSp || 1.35));
       if (ch === "f") monsters.push(makeMob("fox", c, r, extras.foxHp || 2, extras.foxSp || 1.7));
+      if (ch === "n") monsters.push(makeMob("bunny", c, r, extras.bunnyHp || 2, extras.bunnySp || 1.85));
       if (ch === "G") boss = makeBoss(c, r);
     }
   }
@@ -430,11 +511,11 @@ function stageMaps(n) {
         ".#..B...f.B..#.",
         ".=Bp.pBp.pBp.=.",
         "e=m=.1.aa.2=m=e",
-        ".=B.Bp.f.pB.B=.",
+        ".=B.Bp.n.pB.B=.",
         ".#.Bp.p.p.pB.#.",
         ".H.B.......B.H.",
         ".=B..yry...B.=.",
-        ".#.B.ryr.ffB.#.",
+        ".#.B.ryr.fnB.#.",
         ".=.B.......B.=.",
         ".#...........#.",
       ],
@@ -446,19 +527,19 @@ function stageMaps(n) {
       [
         ".e.B...##..B.e.",
         "BB=#.##=#=#=#.B",
-        ".B.#.#wyr#.#.e.",
+        ".B.#.#wyr#.#.n.",
         ".B.#=#.B.#=#=#.",
         "...#.1.B.#.#..2",
         ".B.#=#.B.#=#=#.",
         ".e.#.#.f.#.B#B.",
         "..B.=#wyr#f#=BB",
         "e.B#B.###.#.#e.",
-        "...#=.B...B.B..",
+        "...#=.B...B.n..",
         ".B.#..B..B.....",
         "...#=.B......e.",
         ".B.#.....B.B...",
       ],
-      { eyeHp: 1, foxHp: 2, eyeSp: 1.5, foxSp: 1.9, softDensity: 0.18 }
+      { eyeHp: 1, foxHp: 2, bunnyHp: 2, eyeSp: 1.5, foxSp: 1.9, bunnySp: 2.0, softDensity: 0.18 }
     );
   }
   return parseMap(
@@ -474,10 +555,10 @@ function stageMaps(n) {
       "B...B.B..BB...B",
       ".yry..yry..yry.",
       ".yuy.B.yuy.yuy.",
-      ".ryr..ryr..ryr.",
+      ".ryr.nryr.nryr.",
       ".B.B.....B.B.B.",
     ],
-    { eyeHp: 1, foxHp: 2, eyeSp: 1.55, foxSp: 2.0, softDensity: 0.2 }
+    { eyeHp: 1, foxHp: 2, bunnyHp: 2, eyeSp: 1.55, foxSp: 2.0, bunnySp: 2.1, softDensity: 0.2 }
   );
 }
 
@@ -848,7 +929,7 @@ function hitMob(m) {
   m.hurt = 0.35;
   addBurst(m.x, m.y, m.type === "boss" ? "#1a2238" : "#7dcfb0", 10);
   if (m.hp <= 0) {
-    state.score += m.type === "boss" ? 800 : m.type === "fox" ? 200 : 100;
+    state.score += m.type === "boss" ? 800 : m.type === "fox" || m.type === "bunny" ? 200 : 100;
     addBurst(m.x, m.y, "#c23b3b", 14);
   }
 }
@@ -1165,7 +1246,8 @@ function updateBoss(dt) {
     }
     if (spots.length) {
       const s = spots[(Math.random() * spots.length) | 0];
-      state.monsters.push(makeMob(Math.random() < 0.5 ? "eyeball" : "fox", s.c, s.r, 1, 1.6));
+      const kinds = ["eyeball", "fox", "bunny"];
+      state.monsters.push(makeMob(kinds[(Math.random() * kinds.length) | 0], s.c, s.r, 1, 1.6));
     }
     b.spawnT = 7.5;
   }
@@ -1557,24 +1639,26 @@ function drawSprite(img, x, y, cell, scale = 1.15, flipX = false) {
   }
 }
 
-function drawActor(ent, pack, L, walking) {
+function drawActor(ent, pack, L, walking, opts = {}) {
   const x = L.ox + ent.x * L.cell;
   const y = L.oy + ent.y * L.cell;
-  // 左右：侧面帧实际朝右，向左时翻转
+  // 蓝红角色侧面帧朝右：向左时翻转；仕女/蓝兔表自带左右帧则不翻
   let spriteDir = ent.dir;
   let flipX = false;
-  if (ent.dir === 2) {
-    spriteDir = 2;
-    flipX = true;
-  } else if (ent.dir === 3) {
-    spriteDir = 2;
-    flipX = false;
+  if (!opts.exactSide) {
+    if (ent.dir === 2) {
+      spriteDir = 2;
+      flipX = true;
+    } else if (ent.dir === 3) {
+      spriteDir = 2;
+      flipX = false;
+    }
   }
   const fr = frameOf(pack, spriteDir, walking, ent.anim);
   ctx.save();
   if (ent.hurt > 0) ctx.globalAlpha = 0.55 + Math.sin(ent.hurt * 40) * 0.25;
   if (ent.invuln > 0) ctx.globalAlpha = 0.5 + Math.sin(ent.invuln * 24) * 0.3;
-  drawSprite(fr, x, y, L.cell, 1.22, flipX);
+  drawSprite(fr, x, y, L.cell, opts.scale || 1.22, flipX);
   ctx.restore();
 }
 
@@ -1606,17 +1690,8 @@ function drawLadySprite(wx, wy, L, scale = 1.55, hurt = false) {
 }
 
 function drawCpuPlayer(p, L) {
-  const bob = Math.sin(p.anim * 2.2) * 0.02;
-  const flash = p.invuln > 0;
-  if (!assets?.boss) return;
-  const x = L.ox + p.x * L.cell;
-  const y = L.oy + (p.y + bob) * L.cell;
-  const h = L.cell * 1.55;
-  const w = (assets.boss.width / assets.boss.height) * h;
-  ctx.save();
-  if (flash) ctx.globalAlpha = 0.5 + Math.sin(p.invuln * 24) * 0.3;
-  ctx.drawImage(assets.boss, x - w / 2, y - h * 0.82, w, h);
-  ctx.restore();
+  if (!assets?.lady) return;
+  drawActor(p, assets.lady, L, p.walking || p.moving, { exactSide: true, scale: 1.35 });
 }
 
 function render() {
@@ -1684,8 +1759,9 @@ function render() {
   actors.sort((a, b) => a.z - b.z);
   for (const a of actors) {
     if (a.kind === "mob") {
-      const pack = a.m.type === "fox" ? assets.fox : assets.eyeball;
-      drawActor(a.m, pack, L, a.m.moving);
+      const pack =
+        a.m.type === "fox" ? assets.fox : a.m.type === "bunny" ? assets.bunny : assets.eyeball;
+      drawActor(a.m, pack, L, a.m.moving, { exactSide: a.m.type === "bunny" });
     } else if (a.kind === "p") {
       if (a.p.team === "cpu") drawCpuPlayer(a.p, L);
       else drawActor(a.p, a.p.slot === 1 ? assets.red : assets.blue, L, a.p.walking || a.p.moving);

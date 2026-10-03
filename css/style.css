@@ -322,6 +322,14 @@ html.is-mobile #mobile-gate {
   background: rgba(58, 160, 232, 0.2);
 }
 
+.tag.kart {
+  background: rgba(58, 143, 110, 0.18);
+}
+
+.tag.fall {
+  background: rgba(166, 90, 58, 0.22);
+}
+
 .tag.wip {
   background: rgba(180, 140, 40, 0.22);
 }
@@ -329,7 +337,9 @@ html.is-mobile #mobile-gate {
 #arcade-mode-pick .btn-ghost.active,
 #arcade-versus-pick .btn-ghost.active,
 #hud-arcade .btn-ghost.active,
-#btn-join-arcade.active {
+#btn-join-arcade.active,
+#btn-join-kart.active,
+#btn-join-fall.active {
   background: var(--ink);
   color: #fff;
 }
@@ -822,6 +832,225 @@ html.is-mobile #mobile-gate {
   place-items: center;
   background: rgba(42, 40, 36, 0.55);
   backdrop-filter: blur(3px);
+}
+
+.kart-role-select {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.8rem auto 0.65rem;
+  max-width: 26rem;
+}
+
+.kart-role-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.kart-role-row strong {
+  min-width: 2rem;
+  color: var(--accent-dim);
+}
+
+.kart-role-row .btn-ghost {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.kart-role-thumb {
+  width: 42px;
+  height: 30px;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+.kart-role-row .btn-ghost.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.kart-select-panel {
+  width: min(94vw, 980px);
+  max-width: 980px;
+  max-height: 94vh;
+  overflow: auto;
+}
+
+.kart-duel-select {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(0.8rem, 3vw, 2.6rem);
+  margin: 1rem auto 1.1rem;
+}
+
+.kart-duel-select.single {
+  grid-template-columns: minmax(280px, 480px);
+  justify-content: center;
+}
+
+.kart-select-card {
+  position: relative;
+  height: clamp(390px, 62vh, 540px);
+  padding: 0.9rem 1rem 1rem;
+  border: 4px solid var(--accent);
+  background: #ebe4d6;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.kart-select-card.p2 {
+  border-color: var(--xp);
+}
+
+.kart-select-card.disabled {
+  opacity: 0.58;
+  filter: grayscale(0.35);
+}
+
+.kart-select-player {
+  align-self: flex-start;
+  font-size: 1.5rem;
+  color: var(--accent);
+}
+
+.kart-select-card.p2 .kart-select-player {
+  color: var(--xp);
+}
+
+.kart-select-portrait {
+  width: 100%;
+  height: 220px;
+  margin: 0.35rem 0 0.65rem;
+  border: 2px solid rgba(26, 26, 26, 0.2);
+  background: #e4ddd0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.kart-select-portrait canvas {
+  width: 92%;
+  height: 92%;
+  object-fit: contain;
+}
+
+.kart-select-card h3 {
+  margin: 0 0 0.35rem;
+  color: var(--accent-dim);
+  font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+}
+
+.kart-select-card.p2 h3 {
+  color: var(--xp);
+}
+
+.kart-select-arrow {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: 700 1.8rem/1 Songti SC, serif;
+  cursor: pointer;
+  padding: 0.12rem 0.8rem;
+}
+
+.kart-select-card.p2 .kart-select-arrow {
+  color: var(--xp);
+}
+
+.kart-select-status {
+  color: rgba(26, 26, 26, 0.52);
+  min-height: 1.4em;
+  font-size: 0.88rem;
+}
+
+.kart-select-card.locked .kart-select-status {
+  color: var(--xp);
+  font-weight: 700;
+}
+
+.kart-select-confirm {
+  margin-top: 0.45rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.kart-select-card p {
+  margin-top: auto;
+  padding-top: 0.75rem;
+  color: rgba(26, 26, 26, 0.65);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .kart-duel-select {
+    grid-template-columns: 1fr;
+  }
+  .kart-select-card {
+    height: 320px;
+  }
+  .kart-select-portrait {
+    height: 130px;
+  }
+}
+
+.kart-countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: #fff;
+  text-shadow: 0 4px 0 rgba(26, 26, 26, 0.45);
+  font: 700 clamp(4rem, 13vw, 9rem)/1 "Songti SC", "Noto Serif SC", serif;
+}
+
+.kart-lap-notice {
+  position: fixed;
+  left: 50%;
+  top: 18%;
+  z-index: 4;
+  transform: translateX(-50%);
+  padding: 0.55rem 1.35rem;
+  border: 3px solid var(--ink);
+  background: rgba(242, 239, 230, 0.94);
+  box-shadow: 5px 5px 0 rgba(26, 26, 26, 0.22);
+  color: var(--accent-dim);
+  font-size: clamp(1.35rem, 3vw, 2.25rem);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+/* Override the compact modal width used by the other game overlays. */
+.panel.kart-select-panel {
+  width: min(94vw, 980px);
+  max-width: min(94vw, 980px);
+}
+
+.kart-item-hud {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.kart-item-hud canvas {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  image-rendering: auto;
+  vertical-align: middle;
+}
+
+.kart-item-hud canvas.hidden {
+  display: none;
 }
 
 .loading-screen {
